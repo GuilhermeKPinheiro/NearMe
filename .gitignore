@@ -1,0 +1,15 @@
+node_modules
+.expo
+.expo-shared
+dist
+build
+coverage
+.env
+.env.local
+*.log
+*.tmp
+*.swp
+
+apps/mobile/node_modules
+apps/mobile/.expo
+apps/mobile/.expo-shared

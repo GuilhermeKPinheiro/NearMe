@@ -1,0 +1,11 @@
+ALTER TABLE "Profile" ADD COLUMN "phoneNumber" TEXT;
+ALTER TABLE "Profile" ADD COLUMN "whatsappUrl" TEXT;
+ALTER TABLE "Profile" ADD COLUMN "tiktokUrl" TEXT;
+ALTER TABLE "Profile" ADD COLUMN "snapchatUrl" TEXT;
+ALTER TABLE "Profile" ADD COLUMN "otherSocialUrl" TEXT;
+ALTER TABLE "Profile" ADD COLUMN "showPhoneNumber" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Profile" ADD COLUMN "showSocialLinks" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Profile" ADD COLUMN "publicPhotoUrls" TEXT;
+ALTER TABLE "Profile" ADD COLUMN "matchOnlyPhotoUrls" TEXT;
+ALTER TABLE "Profile" ADD COLUMN "storyPhotoUrls" TEXT;
+ALTER TABLE "Profile" ADD COLUMN "preferredRadiusMeters" INTEGER NOT NULL DEFAULT 1000;

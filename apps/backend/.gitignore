@@ -1,0 +1,8 @@
+node_modules
+dist
+src/generated
+.env
+.env.local
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*

@@ -1,0 +1,25 @@
+{
+  "name": "nearme",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:backend": "npm --prefix ./apps/backend run start:dev",
+    "dev:mobile": "npm --prefix ./apps/mobile run start",
+    "build:backend": "npm --prefix ./apps/backend run build",
+    "lint:backend": "npm --prefix ./apps/backend run lint",
+    "test:backend": "npm --prefix ./apps/backend run test",
+    "typecheck:mobile": "npm --prefix ./apps/mobile run typecheck",
+    "db:setup": "npm --prefix ./apps/backend run db:setup",
+    "db:generate": "npm --prefix ./apps/backend run prisma:generate",
+    "db:migrate": "npm --prefix ./apps/backend run prisma:migrate:dev",
+    "db:seed": "npm --prefix ./apps/backend run db:seed",
+    "db:studio": "npm --prefix ./apps/backend run prisma:studio",
+    "build": "npm run build:backend",
+    "lint": "npm run lint:backend",
+    "test": "npm run test:backend",
+    "check": "npm run lint:backend && npm run typecheck:mobile"
+  }
+}

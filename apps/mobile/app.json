@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "NearMe",
+    "slug": "nearme",
+    "scheme": "nearme",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#0d1110"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Escolha uma foto para deixar seu perfil mais pessoal no NearMe."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Use sua localizacao para mostrar distancias reais no radar do NearMe."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Use a camera para ler o QR de entrada de um local ou evento no NearMe."
+        }
+      ]
+    ],
+    "extra": {
+      "router": {
+        "origin": false
+      }
+    }
+  }
+}

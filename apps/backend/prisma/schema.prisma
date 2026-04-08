@@ -1,0 +1,246 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  engineType   = "client"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AuthProvider {
+  EMAIL
+  GOOGLE
+  BOTH
+}
+
+enum VisibilitySource {
+  MANUAL
+  APP_OPEN
+  BACKGROUND
+  MOCK
+}
+
+enum ProximitySource {
+  BLE
+  MOCK
+  GPS
+}
+
+enum ConnectionRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELED
+}
+
+enum NotificationType {
+  CONNECTION_REQUEST
+  CONNECTION_ACCEPTED
+  VISIBILITY_EXPIRED
+  SYSTEM
+}
+
+enum VenuePrivacy {
+  PUBLIC
+  INVITE_ONLY
+}
+
+model User {
+  id               String               @id @default(uuid())
+  name             String
+  email            String               @unique
+  passwordHash     String?
+  googleId         String?              @unique
+  authProvider     AuthProvider          @default(EMAIL)
+  emailVerifiedAt  DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  profile          Profile?
+  visibilitySessions VisibilitySession[]
+  proximityEvents   ProximityEvent[]     @relation("ProximityEventUser")
+  nearbyDetections  ProximityEvent[]     @relation("ProximityEventNearbyUser")
+  connectionRequestsSent     ConnectionRequest[] @relation("ConnectionRequestFrom")
+  connectionRequestsReceived  ConnectionRequest[] @relation("ConnectionRequestTo")
+  connectionsAsUserA Connection[]        @relation("ConnectionUserA")
+  connectionsAsUserB Connection[]        @relation("ConnectionUserB")
+  notifications     Notification[]
+  blocksMade        BlockedUser[]        @relation("BlockedUserBlocker")
+  blocksReceived    BlockedUser[]        @relation("BlockedUserBlocked")
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens PasswordResetToken[]
+  createdVenues      Venue[]               @relation("VenueOwner")
+}
+
+model Profile {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  displayName      String
+  headline         String?
+  bio              String?
+  photoUrl         String?
+  phoneNumber      String?
+  whatsappUrl      String?
+  instagramUrl     String?
+  tiktokUrl        String?
+  snapchatUrl      String?
+  otherSocialUrl   String?
+  linkedInUrl      String?
+  professionTag    String?
+  city             String?
+  isVisibleByDefault Boolean @default(false)
+  showPhoneNumber  Boolean  @default(false)
+  showSocialLinks  Boolean  @default(false)
+  publicPhotoUrls  String?
+  matchOnlyPhotoUrls String?
+  storyPhotoUrls   String?
+  matchOnlyStoryPhotoUrls String?
+  preferredRadiusMeters Int @default(1000)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VisibilitySession {
+  id         String            @id @default(uuid())
+  userId     String
+  venueId    String?
+  startedAt  DateTime          @default(now())
+  endedAt    DateTime?
+  isActive   Boolean           @default(true)
+  source     VisibilitySource  @default(MANUAL)
+  latitude   Float?
+  longitude  Float?
+  accuracyMeters Float?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  venue      Venue?            @relation(fields: [venueId], references: [id], onDelete: SetNull)
+  proximityEvents ProximityEvent[]
+
+  @@index([userId, isActive])
+  @@index([isActive, latitude, longitude])
+  @@index([venueId, isActive])
+}
+
+model Venue {
+  id           String   @id @default(uuid())
+  ownerId       String?
+  slug         String   @unique
+  joinCode     String   @unique
+  name         String
+  description  String?
+  coverImageUrl String?
+  city         String
+  locationLabel String?
+  latitude     Float
+  longitude    Float
+  radiusMeters Int      @default(250)
+  privacy      VenuePrivacy @default(PUBLIC)
+  startsAt     DateTime?
+  endsAt       DateTime?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  owner        User?    @relation("VenueOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  visibilitySessions VisibilitySession[]
+
+  @@index([isActive, city])
+  @@index([ownerId, createdAt])
+}
+
+model ProximityEvent {
+  id            String          @id @default(uuid())
+  userId        String
+  nearbyUserId  String
+  detectedAt    DateTime        @default(now())
+  signalStrength Int?
+  source        ProximitySource @default(BLE)
+  sessionId     String?
+  createdAt     DateTime        @default(now())
+  user          User            @relation("ProximityEventUser", fields: [userId], references: [id], onDelete: Cascade)
+  nearbyUser    User            @relation("ProximityEventNearbyUser", fields: [nearbyUserId], references: [id], onDelete: Cascade)
+  session       VisibilitySession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, nearbyUserId, detectedAt])
+  @@index([sessionId])
+}
+
+model ConnectionRequest {
+  id          String                 @id @default(uuid())
+  fromUserId  String
+  toUserId    String
+  status      ConnectionRequestStatus @default(PENDING)
+  createdAt   DateTime               @default(now())
+  respondedAt DateTime?
+  fromUser    User                   @relation("ConnectionRequestFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser      User                   @relation("ConnectionRequestTo", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@unique([fromUserId, toUserId])
+  @@index([toUserId, status])
+}
+
+model Connection {
+  id        String   @id @default(uuid())
+  userAId   String
+  userBId   String
+  pairKey   String   @unique
+  createdAt DateTime @default(now())
+  userA     User     @relation("ConnectionUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB     User     @relation("ConnectionUserB", fields: [userBId], references: [id], onDelete: Cascade)
+
+  @@unique([userAId, userBId])
+  @@index([userAId])
+  @@index([userBId])
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  metadata  Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+model BlockedUser {
+  id         String   @id @default(uuid())
+  blockerId  String
+  blockedId  String
+  createdAt  DateTime @default(now())
+  blocker    User     @relation("BlockedUserBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked    User     @relation("BlockedUserBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
