@@ -1,15 +1,21 @@
 import type { ReactNode } from 'react';
 import { AppState } from 'react-native';
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { loginWithEmail, loginWithGoogleDev, registerWithEmail } from '@/services/auth';
+import { loginWithEmail, loginWithGoogleIdToken, registerWithEmail } from '@/services/auth';
+import { getErrorMessage } from '@/services/http';
 import type { DeviceLocation } from '@/services/location';
 import { getCurrentDeviceLocation } from '@/services/location';
 import { listNearbyUsers } from '@/services/nearby';
 import { getMyProfile, updateMyProfile, type ProfileDraft } from '@/services/profile';
-import { getErrorMessage } from '@/services/http';
-import { getVisibilityStatus, leaveVenueSession, startVisibilitySession, stopVisibilitySession, updateVisibilityLocation } from '@/services/visibility';
 import { sessionStorage } from '@/state/session-storage';
 import type { Profile, User, Venue, VisibilitySession } from '@/types/domain';
+import {
+  getVisibilityStatus,
+  leaveVenueSession,
+  startVisibilitySession,
+  stopVisibilitySession,
+  updateVisibilityLocation
+} from '@/services/visibility';
 
 const LOCATION_REFRESH_MS = 60_000;
 
@@ -25,8 +31,8 @@ type SessionState = {
   profile: Profile | null;
   markOnboardingSeen: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (name: string, email: string, password: string) => Promise<void>;
-  signInWithGoogleDev: () => Promise<void>;
+  signUp: (name: string, email: string, password: string) => Promise<{ message: string; email: string }>;
+  signInWithGoogle: (idToken: string) => Promise<void>;
   signOut: () => Promise<void>;
   setVisible: (value: boolean, location?: DeviceLocation) => Promise<void>;
   refreshVisibilityLocation: (location: DeviceLocation) => Promise<void>;
@@ -191,22 +197,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       },
       signUp: async (name: string, email: string, password: string) => {
         const result = await registerWithEmail(name, email, password);
-        await sessionStorage.setToken(result.accessToken);
-        await sessionStorage.setSnapshot({
-          user: result.user,
-          profile: result.profile
-        });
-        setIsAuthenticated(true);
-        setUser(result.user);
-        setProfile(result.profile);
-        setIsVisible(false);
-        setVisibilitySession(null);
-        setActiveVenue(null);
-        const nearby = await listNearbyUsers();
-        setNearbyCount(nearby.summary.count);
+        return {
+          message: result.message,
+          email: result.email
+        };
       },
-      signInWithGoogleDev: async () => {
-        const result = await loginWithGoogleDev('Google Dev User', 'google.dev@nearme.app');
+      signInWithGoogle: async (idToken: string) => {
+        const result = await loginWithGoogleIdToken(idToken);
         await sessionStorage.setToken(result.accessToken);
         await sessionStorage.setSnapshot({
           user: result.user,

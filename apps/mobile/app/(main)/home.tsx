@@ -2,15 +2,17 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Image, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Screen } from '@/components/screen';
-import { AppText } from '@/components/text';
+import { Avatar } from '@/components/avatar';
 import { PrimaryButton, SecondaryButton } from '@/components/button';
 import { Card } from '@/components/card';
-import { Avatar } from '@/components/avatar';
 import { NearMeLogo } from '@/components/logo';
+import { Screen } from '@/components/screen';
+import { SectionHeader } from '@/components/section-header';
+import { AppText } from '@/components/text';
 import { getErrorMessage } from '@/services/http';
 import { getCurrentDeviceLocation } from '@/services/location';
 import { profileToDraft } from '@/services/profile';
+import { uploadImage } from '@/services/uploads';
 import { listActiveVenues } from '@/services/venues';
 import { useSession } from '@/state/session';
 import { colors } from '@/theme/colors';
@@ -27,7 +29,7 @@ export default function HomeScreen() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permission.granted) {
-      throw new Error('Permita acesso as fotos para publicar um story.');
+      throw new Error('Permita acesso às fotos para publicar um story.');
     }
 
     if (!profile) {
@@ -38,7 +40,7 @@ export default function HomeScreen() {
       mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [4, 5],
-      quality: 0.85
+      quality: 0.85,
     });
 
     if (result.canceled) {
@@ -51,13 +53,15 @@ export default function HomeScreen() {
       return;
     }
 
+    const uploadedUrl = await uploadImage(uri);
+
     const draft = profileToDraft(profile);
 
     await saveProfile({
       ...draft,
-      storyPhotoUrls: audience === 'public' ? [draft.storyPhotoUrls, uri].filter(Boolean).join('\n') : draft.storyPhotoUrls,
+      storyPhotoUrls: audience === 'public' ? [draft.storyPhotoUrls, uploadedUrl].filter(Boolean).join('\n') : draft.storyPhotoUrls,
       matchOnlyStoryPhotoUrls:
-        audience === 'match' ? [draft.matchOnlyStoryPhotoUrls, uri].filter(Boolean).join('\n') : draft.matchOnlyStoryPhotoUrls
+        audience === 'match' ? [draft.matchOnlyStoryPhotoUrls, uploadedUrl].filter(Boolean).join('\n') : draft.matchOnlyStoryPhotoUrls,
     });
   };
 
@@ -74,7 +78,7 @@ export default function HomeScreen() {
 
   return (
     <Screen scroll>
-      <View style={{ gap: 18 }}>
+      <View style={{ gap: 20 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <NearMeLogo compact />
           <Avatar uri={profile?.photoUrl} name={profile?.displayName} size={48} />
@@ -82,13 +86,15 @@ export default function HomeScreen() {
 
         <View
           style={{
-            minHeight: 250,
-            borderRadius: 40,
+            minHeight: 300,
+            borderRadius: 36,
             backgroundColor: colors.surface,
+            borderWidth: 1,
+            borderColor: colors.borderSubtle,
             padding: 24,
             overflow: 'hidden',
             justifyContent: 'flex-end',
-            gap: 12
+            gap: 16,
           }}
         >
           <View
@@ -100,7 +106,7 @@ export default function HomeScreen() {
               backgroundColor: colors.accentStrong,
               top: -54,
               right: -42,
-              opacity: 0.18
+              opacity: 0.14,
             }}
           />
           <View
@@ -112,22 +118,16 @@ export default function HomeScreen() {
               backgroundColor: colors.glow,
               bottom: -36,
               left: -32,
-              opacity: 0.9
+              opacity: 0.8,
             }}
           />
-          <AppText variant="eyebrow" style={{ color: colors.accentWarm }}>
-            {isVisible ? 'Voce esta no radar' : 'Modo discreto'}
-          </AppText>
-          <AppText variant="title">
-            {isVisible ? `${nearbyCount} pessoas no seu raio agora.` : 'Apareca so quando quiser.'}
-          </AppText>
-          <AppText variant="bodyMuted">
-            O NearMe usa sua localizacao atual para mostrar quem esta perto de verdade. Contato direto fica protegido ate uma conexao aceita.
-          </AppText>
-          {activeVenue ? <AppText variant="bodyMuted">Local atual: {activeVenue.name}</AppText> : null}
-        </View>
 
-        <Card>
+          <SectionHeader
+            eyebrow={isVisible ? 'Visível agora' : 'Modo discreto'}
+            title={isVisible ? `${nearbyCount} pessoas no seu raio agora.` : 'Apareça só quando quiser.'}
+            description="O NearMe usa sua localização atual para mostrar quem está perto de verdade. Contato direto fica protegido até uma conexão aceita."
+          />
+
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
             <Avatar uri={profile?.photoUrl} name={profile?.displayName} size={72} />
             <View style={{ flex: 1, gap: 4 }}>
@@ -135,58 +135,98 @@ export default function HomeScreen() {
               <AppText variant="bodyMuted">{profile?.headline || 'Defina redes, fotos e raio para aparecer melhor.'}</AppText>
             </View>
           </View>
-          <PrimaryButton
-            title={isVisible ? 'Sair do radar' : 'Entrar no radar'}
-            onPress={() => {
-              (async () => {
-                try {
-                  setError('');
 
-                  if (isVisible) {
-                    await setVisible(false);
-                    return;
-                  }
-
-                  setIsUpdatingLocation(true);
-                  const location = await getCurrentDeviceLocation();
-                  await setVisible(true, location);
-                } catch (nextError) {
-                  setError(getErrorMessage(nextError));
-                } finally {
-                  setIsUpdatingLocation(false);
-                }
-              })();
-            }}
-          />
-          {isVisible ? (
-            <SecondaryButton
-              title={isUpdatingLocation ? 'Atualizando local...' : 'Atualizar local'}
-              disabled={isUpdatingLocation}
-              onPress={() => {
-                (async () => {
-                  try {
-                    setError('');
-                    setIsUpdatingLocation(true);
-                    const location = await getCurrentDeviceLocation();
-                    await refreshVisibilityLocation(location);
-                  } catch (nextError) {
-                    setError(getErrorMessage(nextError));
-                  } finally {
-                    setIsUpdatingLocation(false);
-                  }
-                })();
-              }}
-            />
-          ) : null}
-        </Card>
-
-        <Card style={{ padding: 18 }}>
-          <AppText variant="sectionTitle">Story rapido</AppText>
-          <AppText variant="bodyMuted">Publique da tela principal e escolha se o story sera aberto para todos ou so para match.</AppText>
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <View style={{ flex: 1 }}>
               <PrimaryButton
-                title="Story publico"
+                title={isVisible ? 'Sair do radar' : 'Entrar no radar'}
+                onPress={() => {
+                  (async () => {
+                    try {
+                      setError('');
+
+                      if (isVisible) {
+                        await setVisible(false);
+                        return;
+                      }
+
+                      setIsUpdatingLocation(true);
+                      const location = await getCurrentDeviceLocation();
+                      await setVisible(true, location);
+                    } catch (nextError) {
+                      setError(getErrorMessage(nextError));
+                    } finally {
+                      setIsUpdatingLocation(false);
+                    }
+                  })();
+                }}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <SecondaryButton
+                title={isVisible ? (isUpdatingLocation ? 'Atualizando local' : 'Atualizar local') : activeVenue ? activeVenue.name : 'Abrir Eventos'}
+                disabled={isUpdatingLocation}
+                onPress={() => {
+                  if (isVisible) {
+                    (async () => {
+                      try {
+                        setError('');
+                        setIsUpdatingLocation(true);
+                        const location = await getCurrentDeviceLocation();
+                        await refreshVisibilityLocation(location);
+                      } catch (nextError) {
+                        setError(getErrorMessage(nextError));
+                      } finally {
+                        setIsUpdatingLocation(false);
+                      }
+                    })();
+                    return;
+                  }
+
+                  router.push('/events');
+                }}
+              />
+            </View>
+          </View>
+
+          {activeVenue ? (
+            <View
+              style={{
+                borderTopWidth: 1,
+                borderTopColor: colors.borderSubtle,
+                paddingTop: 14,
+                gap: 4,
+              }}
+            >
+              <AppText variant="eyebrow">Local atual</AppText>
+              <AppText variant="body">{activeVenue.name}</AppText>
+              <AppText variant="bodyMuted">
+                {activeVenue.city}
+                {activeVenue.locationLabel ? ` | ${activeVenue.locationLabel}` : ''}
+              </AppText>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <View style={{ flex: 1 }}>
+            <SecondaryButton title="Editar meu perfil" onPress={() => router.push('/profile')} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <SecondaryButton title="Matches" onPress={() => router.push('/connections')} />
+          </View>
+        </View>
+
+        <Card tone="soft" style={{ padding: 18 }}>
+          <SectionHeader
+            eyebrow="Story rápido"
+            title="Publique sem sair da tela principal."
+            description="Escolha se o story será aberto para todos ou só para quem já deu match."
+          />
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <PrimaryButton
+                title="Story público"
                 onPress={() => {
                   addQuickStory('public').catch((nextError) => setError(getErrorMessage(nextError)));
                 }}
@@ -194,7 +234,7 @@ export default function HomeScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <SecondaryButton
-                title="Story so match"
+                title="Story só match"
                 onPress={() => {
                   addQuickStory('match').catch((nextError) => setError(getErrorMessage(nextError)));
                 }}
@@ -203,47 +243,52 @@ export default function HomeScreen() {
           </View>
         </Card>
 
-        <View style={{ flexDirection: 'row', gap: 12 }}>
-          <View style={{ flex: 1 }}>
-            <PrimaryButton title="Ver pessoas" onPress={() => router.push('/nearby')} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <SecondaryButton title="Matches" onPress={() => router.push('/connections')} />
-          </View>
-        </View>
-
-        <Card style={{ padding: 18 }}>
-          <AppText variant="sectionTitle">{activeVenue ? 'Participando agora' : 'Locais e Eventos ativos'}</AppText>
+        <Card tone="soft" style={{ padding: 18 }}>
+          <SectionHeader
+            eyebrow={activeVenue ? 'Participando agora' : 'Locais e Eventos ativos'}
+            title={activeVenue ? activeVenue.name : 'Entre em um Local para aparecer no contexto certo.'}
+            description={
+              activeVenue
+                ? `${activeVenue.city}${activeVenue.locationLabel ? ` | ${activeVenue.locationLabel}` : ''} | código ${activeVenue.joinCode}`
+                : 'O app prioriza pessoas do mesmo Local quando você confirma a entrada.'
+            }
+          />
           {activeVenue?.coverImageUrl ? (
-            <Image source={{ uri: activeVenue.coverImageUrl }} style={{ width: '100%', height: 190, borderRadius: 24 }} />
-          ) : null}
-          {activeVenue ? (
-            <View style={{ gap: 4 }}>
-              <AppText variant="body">{activeVenue.name}</AppText>
-              <AppText variant="bodyMuted">
-                {activeVenue.city}
-                {activeVenue.locationLabel ? ` | ${activeVenue.locationLabel}` : ''} | codigo {activeVenue.joinCode}
-              </AppText>
-            </View>
+            <Image source={{ uri: activeVenue.coverImageUrl }} style={{ width: '100%', height: 196, borderRadius: 24 }} />
           ) : (
-            venues.slice(0, 2).map((venue) => (
-              <View key={venue.id} style={{ gap: 4 }}>
-                <AppText variant="body">{venue.name}</AppText>
-                <AppText variant="bodyMuted">
-                  {venue.city}
-                  {venue.locationLabel ? ` | ${venue.locationLabel}` : ''} | area de {venue.radiusMeters} m | codigo {venue.joinCode}
-                </AppText>
-              </View>
-            ))
+            <View style={{ gap: 12 }}>
+              {venues.slice(0, 2).map((venue, index, items) => (
+                <View
+                  key={venue.id}
+                  style={{
+                    gap: 4,
+                    paddingBottom: index < items.length - 1 ? 12 : 0,
+                    borderBottomWidth: index < items.length - 1 ? 1 : 0,
+                    borderBottomColor: colors.borderSubtle,
+                  }}
+                >
+                  <AppText variant="body">{venue.name}</AppText>
+                  <AppText variant="bodyMuted">
+                    {venue.city}
+                    {venue.locationLabel ? ` | ${venue.locationLabel}` : ''} | área de {venue.radiusMeters} m
+                  </AppText>
+                </View>
+              ))}
+            </View>
           )}
-          <SecondaryButton title="Abrir Eventos" onPress={() => router.push('/events')} />
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <PrimaryButton title="Ver pessoas" onPress={() => router.push('/nearby')} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <SecondaryButton title="Abrir Eventos" onPress={() => router.push('/events')} />
+            </View>
+          </View>
           {venues.length === 0 ? <AppText variant="bodyMuted">Nenhum Local ou Evento ativo no momento.</AppText> : null}
         </Card>
 
-        <SecondaryButton title="Editar meu perfil" onPress={() => router.push('/profile')} />
-
         {error ? (
-          <Card>
+          <Card tone="soft">
             <AppText variant="bodyMuted">{error}</AppText>
           </Card>
         ) : null}

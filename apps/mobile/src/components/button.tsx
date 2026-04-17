@@ -13,19 +13,20 @@ export function PrimaryButton({ title, compact = false, style, ...props }: Butto
       style={({ pressed }) => [
         {
           backgroundColor: colors.accentStrong,
-          paddingVertical: compact ? 10 : 14,
+          minHeight: compact ? 42 : 52,
           paddingHorizontal: 16,
           borderRadius: 999,
           alignItems: 'center',
+          justifyContent: 'center',
           borderWidth: 1,
           borderColor: colors.accentStrong,
-          opacity: pressed ? 0.88 : 1
+          opacity: props.disabled ? 0.45 : pressed ? 0.88 : 1,
         },
-        style as StyleProp<ViewStyle>
+        style as StyleProp<ViewStyle>,
       ]}
       {...props}
     >
-      <Text style={{ color: colors.background, fontWeight: '800' }}>{title}</Text>
+      <Text style={{ color: colors.background, fontWeight: '800', fontSize: 15 }}>{title}</Text>
     </Pressable>
   );
 }
@@ -35,20 +36,21 @@ export function SecondaryButton({ title, compact = false, style, ...props }: But
     <Pressable
       style={({ pressed }) => [
         {
-          backgroundColor: 'transparent',
-          borderColor: colors.border,
+          backgroundColor: colors.surfaceAlt,
+          borderColor: colors.borderSubtle,
           borderWidth: 1,
-          paddingVertical: compact ? 10 : 14,
+          minHeight: compact ? 42 : 52,
           paddingHorizontal: 16,
           borderRadius: 999,
           alignItems: 'center',
-          opacity: pressed ? 0.88 : 1
+          justifyContent: 'center',
+          opacity: props.disabled ? 0.45 : pressed ? 0.88 : 1,
         },
-        style as StyleProp<ViewStyle>
+        style as StyleProp<ViewStyle>,
       ]}
       {...props}
     >
-      <Text style={{ color: colors.text, fontWeight: '700' }}>{title}</Text>
+      <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15 }}>{title}</Text>
     </Pressable>
   );
 }

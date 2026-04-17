@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { View } from 'react-native';
+import { PrimaryButton, SecondaryButton } from '@/components/button';
+import { Input } from '@/components/input';
+import { NearMeLogo } from '@/components/logo';
 import { Screen } from '@/components/screen';
 import { AppText } from '@/components/text';
-import { Input } from '@/components/input';
-import { PrimaryButton, SecondaryButton } from '@/components/button';
-import { NearMeLogo } from '@/components/logo';
 import { getErrorMessage } from '@/services/http';
 import { useSession } from '@/state/session';
 
@@ -17,6 +17,7 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   return (
@@ -24,8 +25,8 @@ export default function RegisterScreen() {
       <View style={{ gap: 18 }}>
         <NearMeLogo />
         <View style={{ gap: 8 }}>
-          <AppText variant="title">Cadastro rapido, presenca discreta.</AppText>
-          <AppText variant="bodyMuted">Entre em minutos. Depois voce decide redes, WhatsApp e fotos privadas.</AppText>
+          <AppText variant="title">Cadastro rápido, presença discreta.</AppText>
+          <AppText variant="bodyMuted">Entre em minutos. Depois você decide redes, WhatsApp e fotos privadas.</AppText>
         </View>
 
         <Input label="Nome" placeholder="Seu nome" value={name} onChangeText={setName} />
@@ -53,9 +54,10 @@ export default function RegisterScreen() {
         />
 
         {error ? <AppText variant="bodyMuted">{error}</AppText> : null}
+        {success ? <AppText variant="bodyMuted">{success}</AppText> : null}
 
         <PrimaryButton
-          title={isSubmitting ? 'Criando...' : 'Criar e entrar'}
+          title={isSubmitting ? 'Criando...' : 'Criar conta'}
           disabled={isSubmitting}
           onPress={async () => {
             if (password !== confirmPassword) {
@@ -66,8 +68,9 @@ export default function RegisterScreen() {
             try {
               setIsSubmitting(true);
               setError('');
-              await signUp(name, email, password);
-              router.replace('/home');
+              setSuccess('');
+              const result = await signUp(name, email, password);
+              setSuccess(result.message);
             } catch (nextError) {
               setError(getErrorMessage(nextError));
             } finally {
@@ -75,7 +78,7 @@ export default function RegisterScreen() {
             }
           }}
         />
-        <SecondaryButton title="Ja tenho conta" onPress={() => router.push('/login')} />
+        <SecondaryButton title="Ir para login" onPress={() => router.push('/login')} />
       </View>
     </Screen>
   );

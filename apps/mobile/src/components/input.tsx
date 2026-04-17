@@ -10,21 +10,23 @@ type InputProps = ComponentProps<typeof TextInput> & {
 export function Input({ label, style, ...props }: InputProps) {
   return (
     <View style={{ gap: 8 }}>
-      <AppText variant="sectionTitle">{label}</AppText>
+      <AppText variant="eyebrow" style={{ color: colors.muted }}>
+        {label}
+      </AppText>
       <TextInput
         placeholderTextColor={colors.muted}
         style={[
           {
-            backgroundColor: colors.surface,
+            backgroundColor: colors.surfaceAlt,
             color: colors.text,
-            borderRadius: 14,
+            borderRadius: 18,
             borderWidth: 1,
-            borderColor: colors.border,
+            borderColor: colors.borderSubtle,
             paddingHorizontal: 14,
             paddingVertical: 14,
-            fontSize: 16
+            fontSize: 16,
           },
-          style
+          style,
         ]}
         {...props}
       />

@@ -4,6 +4,12 @@
     "slug": "nearme",
     "scheme": "nearme",
     "version": "0.1.0",
+    "ios": {
+      "bundleIdentifier": "com.nearme.app"
+    },
+    "android": {
+      "package": "com.nearme.app"
+    },
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "splash": {

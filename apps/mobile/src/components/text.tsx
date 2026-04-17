@@ -9,7 +9,7 @@ type AppTextProps = TextProps & {
 };
 
 const variantStyles: Record<Variant, object> = {
-  title: { color: colors.text, fontSize: 32, lineHeight: 38, fontWeight: '900' },
+  title: { color: colors.text, fontSize: 30, lineHeight: 36, fontWeight: '900' },
   sectionTitle: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: '700' },
   body: { color: colors.text, fontSize: 16, lineHeight: 24 },
   bodyMuted: { color: colors.muted, fontSize: 15, lineHeight: 22 },

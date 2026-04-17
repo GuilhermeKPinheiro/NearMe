@@ -149,6 +149,24 @@ export type AuthResponse = {
   profile: Profile | null;
 };
 
+export type RegisterResponse = {
+  success: boolean;
+  email: string;
+  requiresEmailVerification: boolean;
+  message: string;
+};
+
+export type ForgotPasswordResponse = {
+  success: boolean;
+  email: string;
+  message: string;
+};
+
+export type GenericSuccessResponse = {
+  success: boolean;
+  message: string;
+};
+
 export type ConnectionState = {
   received: ReceivedConnectionRequest[];
   sent: SentConnectionRequest[];

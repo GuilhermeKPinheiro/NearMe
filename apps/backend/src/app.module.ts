@@ -12,6 +12,8 @@ import { ConnectionsModule } from './modules/connections/connections.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { HealthModule } from './modules/health/health.module';
 import { VenuesModule } from './modules/venues/venues.module';
+import { UploadsModule } from './modules/uploads/uploads.module';
+import { EmailModule } from './modules/email/email.module';
 
 @Module({
   imports: [
@@ -35,6 +37,8 @@ import { VenuesModule } from './modules/venues/venues.module';
     ConnectionsModule,
     NotificationsModule,
     VenuesModule,
+    UploadsModule,
+    EmailModule,
     HealthModule,
   ],
 })

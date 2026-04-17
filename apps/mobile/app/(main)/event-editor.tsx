@@ -9,6 +9,7 @@ import { Input } from '@/components/input';
 import { PrimaryButton, SecondaryButton } from '@/components/button';
 import { getErrorMessage } from '@/services/http';
 import { getCurrentDeviceLocation } from '@/services/location';
+import { uploadImage } from '@/services/uploads';
 import {
   createVenue,
   listMyVenues,
@@ -48,7 +49,7 @@ export default function EventEditorScreen() {
         const venue = venues.find((item) => item.id === venueId);
 
         if (!venue) {
-          setMessage('Evento ou Local nao encontrado.');
+          setMessage('Evento ou Local não encontrado.');
           return;
         }
 
@@ -71,7 +72,7 @@ export default function EventEditorScreen() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permission.granted) {
-      setMessage('Permita acesso as fotos para escolher a capa.');
+      setMessage('Permita acesso às fotos para escolher a capa.');
       return;
     }
 
@@ -82,8 +83,23 @@ export default function EventEditorScreen() {
       quality: 0.85,
     });
 
-    if (!result.canceled) {
-      setDraft((current) => ({ ...current, coverImageUrl: result.assets[0]?.uri ?? current.coverImageUrl }));
+    if (result.canceled) {
+      return;
+    }
+
+    const uri = result.assets[0]?.uri;
+
+    if (!uri) {
+      return;
+    }
+
+    try {
+      setMessage('Enviando capa...');
+      const uploadedUrl = await uploadImage(uri);
+      setDraft((current) => ({ ...current, coverImageUrl: uploadedUrl }));
+      setMessage('Capa enviada com sucesso.');
+    } catch (nextError) {
+      setMessage(getErrorMessage(nextError));
     }
   };
 
@@ -95,7 +111,7 @@ export default function EventEditorScreen() {
         latitude: location.latitude,
         longitude: location.longitude,
       }));
-      setMessage('Localizacao atual vinculada ao Evento/Local.');
+      setMessage('Localização atual vinculada ao Evento/Local.');
     } catch (nextError) {
       setMessage(getErrorMessage(nextError));
     }
@@ -144,7 +160,7 @@ export default function EventEditorScreen() {
           <AppText variant="eyebrow">{venueId ? 'Editar' : 'Criar'}</AppText>
           <AppText variant="title">{venueId ? 'Atualizar Evento ou Local.' : 'Novo Evento ou Local.'}</AppText>
           <AppText variant="bodyMuted">
-            Informacoes essenciais: nome, privacidade, cidade, referencia do local, capa e coordenadas atuais.
+            Informações essenciais: nome, privacidade, cidade, referência do local, capa e coordenadas atuais.
           </AppText>
         </View>
 
@@ -170,17 +186,17 @@ export default function EventEditorScreen() {
         <Card>
           <Input label="Nome" placeholder="Ex: Sunset Rooftop" value={draft.name} onChangeText={(value) => setDraft((current) => ({ ...current, name: value }))} />
           <Input
-            label="Descricao"
-            placeholder="Musica, publico, horario, clima do local..."
+            label="Descrição"
+            placeholder="Música, público, horário, clima do local..."
             value={draft.description}
             onChangeText={(value) => setDraft((current) => ({ ...current, description: value }))}
             multiline
             numberOfLines={4}
             style={{ minHeight: 100, textAlignVertical: 'top' }}
           />
-          <Input label="Cidade" placeholder="Sao Paulo" value={draft.city} onChangeText={(value) => setDraft((current) => ({ ...current, city: value }))} />
+          <Input label="Cidade" placeholder="São Paulo" value={draft.city} onChangeText={(value) => setDraft((current) => ({ ...current, city: value }))} />
           <Input
-            label="Referencia do local"
+            label="Referência do local"
             placeholder="Ex: Rooftop Bela Vista, entrada lateral"
             value={draft.locationLabel}
             onChangeText={(value) => setDraft((current) => ({ ...current, locationLabel: value }))}
@@ -192,9 +208,9 @@ export default function EventEditorScreen() {
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <View style={{ flex: 1 }}>
               {draft.privacy === 'PUBLIC' ? (
-                <PrimaryButton title="Publico" compact onPress={() => undefined} />
+                <PrimaryButton title="Público" compact onPress={() => undefined} />
               ) : (
-                <SecondaryButton title="Publico" compact onPress={() => setDraft((current) => ({ ...current, privacy: 'PUBLIC' }))} />
+                <SecondaryButton title="Público" compact onPress={() => setDraft((current) => ({ ...current, privacy: 'PUBLIC' }))} />
               )}
             </View>
             <View style={{ flex: 1 }}>
@@ -212,7 +228,7 @@ export default function EventEditorScreen() {
         </Card>
 
         <Card>
-          <AppText variant="sectionTitle">Area do local</AppText>
+          <AppText variant="sectionTitle">Área do local</AppText>
           <View style={{ flexDirection: 'row', gap: 10 }}>
             {radiusOptions.map((radius) => (
               <View key={radius} style={{ flex: 1 }}>
@@ -231,14 +247,14 @@ export default function EventEditorScreen() {
           <AppText variant="bodyMuted">
             {draft.latitude && draft.longitude
               ? `Lat ${draft.latitude.toFixed(5)} | Lon ${draft.longitude.toFixed(5)}`
-              : 'Ainda sem coordenadas. Use sua localizacao atual para garantir geofence e saida automatica.'}
+              : 'Ainda sem coordenadas. Use sua localização atual para garantir geofence e saída automática.'}
           </AppText>
-          <SecondaryButton title="Usar localizacao atual" onPress={() => void syncCurrentLocation()} />
+          <SecondaryButton title="Usar localização atual" onPress={() => void syncCurrentLocation()} />
         </Card>
 
         {message ? <AppText variant="bodyMuted">{message}</AppText> : null}
         <PrimaryButton
-          title={isSaving ? 'Salvando...' : venueId ? 'Salvar alteracoes' : 'Criar Evento/Local'}
+          title={isSaving ? 'Salvando...' : venueId ? 'Salvar alterações' : 'Criar Evento/Local'}
           disabled={isSaving || !draft.name || !draft.city || !draft.locationLabel}
           onPress={() => void save()}
         />

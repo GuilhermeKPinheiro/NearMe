@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Exclusão de conta | NearMe</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page stack">
+      <section class="hero">
+        <p class="eyebrow">NearMe</p>
+        <h1>Exclusão de conta</h1>
+        <p>Esta página documenta como o usuário solicita a exclusão da conta para fins de loja e conformidade.</p>
+      </section>
+
+      <section class="card">
+        <h2>Como solicitar</h2>
+        <p>No app, entre em <strong>Perfil</strong> e use a opção de excluir conta quando ela estiver disponível. Enquanto o fluxo interno não for publicado, o usuário pode solicitar a exclusão pelo e-mail de suporte informado abaixo.</p>
+      </section>
+
+      <section class="card">
+        <h2>O que será apagado</h2>
+        <ul>
+          <li>Conta e perfil do usuário.</li>
+          <li>Fotos, stories e links sociais associados ao perfil.</li>
+          <li>Histórico operacional que não precise ser mantido por obrigação legal ou antifraude.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Prazo de processamento</h2>
+        <p>Defina aqui o SLA real da operação antes de publicar. Exemplo comum: até 30 dias corridos.</p>
+      </section>
+
+      <section class="card">
+        <h2>Contato</h2>
+        <p>Suporte: <a id="support-email" href="mailto:suporte@nearme.app">suporte@nearme.app</a></p>
+      </section>
+    </main>
+    <script src="./config.js"></script>
+    <script>
+      const config = window.NEARME_WEB_CONFIG || {};
+      const email = config.supportEmail || 'suporte@nearme.app';
+      const link = document.getElementById('support-email');
+      link.textContent = email;
+      link.href = `mailto:${email}`;
+    </script>
+  </body>
+</html>

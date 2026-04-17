@@ -12,7 +12,7 @@ type ScreenProps = {
 
 export function Screen({ children, scroll = false, refreshControlProps }: ScreenProps) {
   const content = (
-    <View style={{ flex: 1, padding: 20, gap: 16 }}>
+    <View style={{ flex: 1, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 28, gap: 18 }}>
       {children}
     </View>
   );

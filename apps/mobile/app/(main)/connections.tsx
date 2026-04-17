@@ -5,11 +5,12 @@ import { AppText } from '@/components/text';
 import { Card } from '@/components/card';
 import { PrimaryButton, SecondaryButton } from '@/components/button';
 import { Avatar } from '@/components/avatar';
+import { MediaStrip } from '@/components/media-strip';
+import { SectionHeader } from '@/components/section-header';
 import { acceptConnectionRequest, listConnectionState, rejectConnectionRequest } from '@/services/connections';
 import { getErrorMessage } from '@/services/http';
 import { useSession } from '@/state/session';
 import type { ConnectionState } from '@/types/domain';
-import { colors } from '@/theme/colors';
 
 function splitPhotos(value: string) {
   return value.split('\n').map((item) => item.trim()).filter(Boolean);
@@ -46,15 +47,15 @@ export default function ConnectionsScreen() {
   return (
     <Screen scroll>
       <View style={{ gap: 18 }}>
-        <View style={{ gap: 6 }}>
-          <AppText variant="eyebrow">Matches</AppText>
-          <AppText variant="title">Matches para levar para suas redes.</AppText>
-          <AppText variant="bodyMuted">Aqui nao vira chat pesado: aceite e continue pelo Instagram, TikTok ou WhatsApp.</AppText>
-        </View>
+        <SectionHeader
+          eyebrow="Matches"
+          title="Matches para levar para suas redes."
+          description="Aqui nao vira chat pesado: aceite e continue pelo Instagram, TikTok ou WhatsApp."
+        />
 
         {error ? <AppText variant="bodyMuted">{error}</AppText> : null}
 
-        <Card>
+        <Card tone="soft">
           <AppText variant="sectionTitle">Querem te conhecer</AppText>
           {state.received.map((item) => (
             <View key={item.id} style={{ gap: 12 }}>
@@ -120,35 +121,15 @@ export default function ConnectionsScreen() {
                   <LinkLine label="Outro link" url={item.user.otherSocialUrl} />
                   <LinkLine label="WhatsApp" url={item.user.whatsappUrl} />
                 </View>
-                {privatePhotos.length ? (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-                    {privatePhotos.map((photo) => (
-                      <Image
-                        key={photo}
-                        source={{ uri: photo }}
-                        style={{ width: 82, height: 82, borderRadius: 20, backgroundColor: colors.surfaceAlt }}
-                      />
-                    ))}
-                  </ScrollView>
-                ) : null}
-                {privateStories.length ? (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-                    {privateStories.map((photo) => (
-                      <Image
-                        key={photo}
-                        source={{ uri: photo }}
-                        style={{ width: 82, height: 120, borderRadius: 20, backgroundColor: colors.surfaceAlt }}
-                      />
-                    ))}
-                  </ScrollView>
-                ) : null}
+                {privatePhotos.length ? <MediaStrip title="Fotos privadas" items={privatePhotos} /> : null}
+                {privateStories.length ? <MediaStrip title="Stories reservados" items={privateStories} tall /> : null}
               </View>
             );
           })}
           {state.connections.length === 0 ? <AppText variant="bodyMuted">Ainda nenhum match aceito.</AppText> : null}
         </Card>
 
-        <Card>
+        <Card tone="soft">
           <AppText variant="sectionTitle">Curtidas enviadas</AppText>
           {state.sent.map((item) => (
             <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>

@@ -2,27 +2,89 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Switch, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Screen } from '@/components/screen';
-import { AppText } from '@/components/text';
+import { Avatar } from '@/components/avatar';
+import { PrimaryButton, SecondaryButton } from '@/components/button';
 import { Card } from '@/components/card';
 import { Input } from '@/components/input';
-import { PrimaryButton, SecondaryButton } from '@/components/button';
-import { Avatar } from '@/components/avatar';
+import { MediaStrip } from '@/components/media-strip';
+import { Screen } from '@/components/screen';
+import { SectionHeader } from '@/components/section-header';
+import { SegmentedControl } from '@/components/segmented-control';
+import { AppText } from '@/components/text';
 import { emptyProfileDraft, profileToDraft, type ProfileDraft } from '@/services/profile';
 import { getErrorMessage } from '@/services/http';
+import { uploadImage } from '@/services/uploads';
 import { useSession } from '@/state/session';
 import { colors } from '@/theme/colors';
 
 const radiusOptions = [
   { label: '100 m', value: 100 },
   { label: '1 km', value: 1000 },
-  { label: '10 km', value: 10000 }
+  { label: '10 km', value: 10000 },
 ];
 
 type PhotoField = 'publicPhotoUrls' | 'matchOnlyPhotoUrls' | 'storyPhotoUrls' | 'matchOnlyStoryPhotoUrls';
+type MediaMode = 'public-story' | 'match-story' | 'public-photo' | 'match-photo';
 
 function appendLine(current: string, value: string) {
   return [current.trim(), value].filter(Boolean).join('\n');
+}
+
+function splitMedia(value: string) {
+  return value.split('\n').map((item) => item.trim()).filter(Boolean);
+}
+
+function PrivacyToggle({
+  title,
+  description,
+  value,
+  onValueChange,
+}: {
+  title: string;
+  description: string;
+  value: boolean;
+  onValueChange: (value: boolean) => void;
+}) {
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+      <View style={{ flex: 1, gap: 4 }}>
+        <AppText variant="sectionTitle">{title}</AppText>
+        <AppText variant="bodyMuted">{description}</AppText>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        thumbColor={value ? colors.accentStrong : colors.muted}
+        trackColor={{ false: colors.border, true: colors.glow }}
+      />
+    </View>
+  );
+}
+
+function MediaPanel({
+  title,
+  description,
+  items,
+  onAdd,
+  tall,
+}: {
+  title: string;
+  description: string;
+  items: string[];
+  onAdd: () => void;
+  tall?: boolean;
+}) {
+  return (
+    <Card tone="soft" style={{ padding: 14 }}>
+      <View style={{ gap: 4 }}>
+        <AppText variant="eyebrow">{title}</AppText>
+        <AppText variant="sectionTitle">{items.length} itens</AppText>
+        <AppText variant="bodyMuted">{description}</AppText>
+      </View>
+      <MediaStrip title="Preview" items={items.slice(0, 6)} tall={tall} emptyLabel="Nenhuma mídia adicionada ainda." />
+      <SecondaryButton title="Adicionar" compact onPress={onAdd} />
+    </Card>
+  );
 }
 
 export default function ProfileScreen() {
@@ -30,6 +92,7 @@ export default function ProfileScreen() {
   const { profile, saveProfile, signOut } = useSession();
   const [draft, setDraft] = useState<ProfileDraft>(emptyProfileDraft);
   const [message, setMessage] = useState('');
+  const [mediaMode, setMediaMode] = useState<MediaMode>('public-story');
 
   useEffect(() => {
     if (!profile) {
@@ -43,15 +106,15 @@ export default function ProfileScreen() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permission.granted) {
-      setMessage('Permita acesso as fotos para escolher uma imagem.');
+      setMessage('Permita acesso às fotos para escolher uma imagem.');
       return;
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.85
+      aspect: field?.includes('Story') ? [4, 5] : [1, 1],
+      quality: 0.85,
     });
 
     if (result.canceled) {
@@ -64,195 +127,219 @@ export default function ProfileScreen() {
       return;
     }
 
-    setDraft((current) => (field ? { ...current, [field]: appendLine(current[field], uri) } : { ...current, photoUrl: uri }));
+    try {
+      setMessage('Enviando imagem...');
+      const uploadedUrl = await uploadImage(uri);
+      setDraft((current) => (field ? { ...current, [field]: appendLine(current[field], uploadedUrl) } : { ...current, photoUrl: uploadedUrl }));
+      setMessage('Imagem enviada com sucesso.');
+    } catch (nextError) {
+      setMessage(getErrorMessage(nextError));
+    }
   };
+
+  const mediaPanels = {
+    'public-story': {
+      title: 'Story público',
+      description: 'Aparece para quem está vendo você por perto.',
+      items: splitMedia(draft.storyPhotoUrls),
+      field: 'storyPhotoUrls' as PhotoField,
+      tall: true,
+    },
+    'match-story': {
+      title: 'Story só match',
+      description: 'Fica reservado para conexões aceitas.',
+      items: splitMedia(draft.matchOnlyStoryPhotoUrls),
+      field: 'matchOnlyStoryPhotoUrls' as PhotoField,
+      tall: true,
+    },
+    'public-photo': {
+      title: 'Fotos públicas',
+      description: 'Compõem a vitrine básica do seu perfil.',
+      items: splitMedia(draft.publicPhotoUrls),
+      field: 'publicPhotoUrls' as PhotoField,
+      tall: false,
+    },
+    'match-photo': {
+      title: 'Fotos privadas',
+      description: 'Liberadas apenas depois do match.',
+      items: splitMedia(draft.matchOnlyPhotoUrls),
+      field: 'matchOnlyPhotoUrls' as PhotoField,
+      tall: false,
+    },
+  };
+
+  const activeMediaPanel = mediaPanels[mediaMode];
 
   return (
     <Screen scroll>
-      <View style={{ gap: 16 }}>
-        <View style={{ gap: 6 }}>
-          <AppText variant="eyebrow">Perfil prime</AppText>
-          <AppText variant="title">Controle o que aparece na festa.</AppText>
-          <AppText variant="bodyMuted">
-            Redes podem aparecer sem liberar tudo. Telefone e fotos privadas ficam para depois do match.
-          </AppText>
-        </View>
+      <View style={{ gap: 18 }}>
+        <SectionHeader
+          eyebrow="Perfil"
+          title="Controle sua vitrine na festa."
+          description="Defina o que aparece para todos, o que fica reservado para match e como você quer ser encontrado."
+        />
 
-        <Card>
-          <View style={{ alignItems: 'center', gap: 12 }}>
+        <Card style={{ padding: 20 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
             <Avatar uri={draft.photoUrl} name={draft.displayName} size={112} />
-            <SecondaryButton title="Trocar foto principal" onPress={() => pickImage()} />
-          </View>
-        </Card>
-
-        <Card>
-          <View style={{ gap: 12 }}>
-            <Input
-              label="Nome"
-              placeholder="Como voce quer aparecer"
-              value={draft.displayName}
-              onChangeText={(value) => setDraft((current) => ({ ...current, displayName: value }))}
-            />
-            <Input
-              label="Frase curta"
-              placeholder="Ex: set de house, boas conversas, sem pressa"
-              value={draft.headline}
-              onChangeText={(value) => setDraft((current) => ({ ...current, headline: value }))}
-            />
-            <Input
-              label="Sobre voce"
-              placeholder="Uma bio curta para puxar assunto"
-              value={draft.bio}
-              onChangeText={(value) => setDraft((current) => ({ ...current, bio: value }))}
-            />
-            <Input
-              label="Vibe/interesses"
-              placeholder="Musica, festa, arte, viagem..."
-              value={draft.professionTag}
-              onChangeText={(value) => setDraft((current) => ({ ...current, professionTag: value }))}
-            />
-            <Input
-              label="Cidade"
-              placeholder="Sao Paulo"
-              value={draft.city}
-              onChangeText={(value) => setDraft((current) => ({ ...current, city: value }))}
-            />
-          </View>
-        </Card>
-
-        <Card>
-          <View style={{ gap: 12 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <AppText variant="sectionTitle">Mostrar redes antes do match</AppText>
-                <AppText variant="bodyMuted">A pessoa ve seus links, mas nao recebe acesso privado ao perfil.</AppText>
-              </View>
-              <Switch
-                value={draft.showSocialLinks}
-                onValueChange={(value) => setDraft((current) => ({ ...current, showSocialLinks: value }))}
-                thumbColor={draft.showSocialLinks ? colors.accentStrong : colors.muted}
-                trackColor={{ false: colors.border, true: colors.glow }}
-              />
+            <View style={{ flex: 1, gap: 8 }}>
+              <AppText variant="sectionTitle">{draft.displayName || 'Sua identidade principal'}</AppText>
+              <AppText variant="bodyMuted">{draft.headline || 'Escolha uma foto e uma frase curta para o primeiro contato.'}</AppText>
+              <SecondaryButton title="Trocar foto principal" onPress={() => pickImage()} />
             </View>
-            <Input
-              label="Instagram"
-              placeholder="https://instagram.com/..."
-              value={draft.instagramUrl}
-              onChangeText={(value) => setDraft((current) => ({ ...current, instagramUrl: value }))}
-            />
-            <Input
-              label="TikTok"
-              placeholder="https://tiktok.com/@..."
-              value={draft.tiktokUrl}
-              onChangeText={(value) => setDraft((current) => ({ ...current, tiktokUrl: value }))}
-            />
-            <Input
-              label="Snapchat"
-              placeholder="https://snapchat.com/add/..."
-              value={draft.snapchatUrl}
-              onChangeText={(value) => setDraft((current) => ({ ...current, snapchatUrl: value }))}
-            />
-            <Input
-              label="Outro link"
-              placeholder="Site, X, Threads ou outra rede"
-              value={draft.otherSocialUrl}
-              onChangeText={(value) => setDraft((current) => ({ ...current, otherSocialUrl: value }))}
-            />
           </View>
         </Card>
 
-        <Card>
-          <View style={{ gap: 12 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <AppText variant="sectionTitle">Liberar telefone/WhatsApp apos match</AppText>
-                <AppText variant="bodyMuted">O numero so aparece para conexoes aceitas.</AppText>
-              </View>
-              <Switch
-                value={draft.showPhoneNumber}
-                onValueChange={(value) => setDraft((current) => ({ ...current, showPhoneNumber: value }))}
-                thumbColor={draft.showPhoneNumber ? colors.accentStrong : colors.muted}
-                trackColor={{ false: colors.border, true: colors.glow }}
-              />
-            </View>
-            <Input
-              label="Telefone"
-              placeholder="+55 11 99999-9999"
-              keyboardType="phone-pad"
-              value={draft.phoneNumber}
-              onChangeText={(value) => setDraft((current) => ({ ...current, phoneNumber: value }))}
-            />
-            <Input
-              label="Link WhatsApp"
-              placeholder="https://wa.me/5511999999999"
-              value={draft.whatsappUrl}
-              onChangeText={(value) => setDraft((current) => ({ ...current, whatsappUrl: value }))}
-            />
-          </View>
+        <Card style={{ padding: 18 }}>
+          <SectionHeader
+            eyebrow="Identidade"
+            title="Como você aparece."
+            description="Esses dados montam o topo do seu perfil e ajudam a puxar assunto."
+          />
+          <Input
+            label="Nome"
+            placeholder="Como você quer aparecer"
+            value={draft.displayName}
+            onChangeText={(value) => setDraft((current) => ({ ...current, displayName: value }))}
+          />
+          <Input
+            label="Frase curta"
+            placeholder="Ex: set de house, boas conversas, sem pressa"
+            value={draft.headline}
+            onChangeText={(value) => setDraft((current) => ({ ...current, headline: value }))}
+          />
+          <Input
+            label="Sobre você"
+            placeholder="Uma bio curta para puxar assunto"
+            value={draft.bio}
+            onChangeText={(value) => setDraft((current) => ({ ...current, bio: value }))}
+          />
+          <Input
+            label="Vibe ou interesses"
+            placeholder="Música, festa, arte, viagem..."
+            value={draft.professionTag}
+            onChangeText={(value) => setDraft((current) => ({ ...current, professionTag: value }))}
+          />
+          <Input label="Cidade" placeholder="São Paulo" value={draft.city} onChangeText={(value) => setDraft((current) => ({ ...current, city: value }))} />
         </Card>
 
-        <Card>
-          <View style={{ gap: 12 }}>
-            <AppText variant="sectionTitle">Fotos e stories</AppText>
-            <AppText variant="bodyMuted">Organize a vitrine do seu perfil em camadas: aberto para todos, so para match e stories do momento.</AppText>
+        <Card style={{ padding: 18 }}>
+          <SectionHeader
+            eyebrow="Redes e contato"
+            title="Defina o que pode ser liberado."
+            description="O app deve funcionar como ponte para suas redes, sem abrir tudo antes da hora."
+          />
+          <PrivacyToggle
+            title="Mostrar redes antes do match"
+            description="A pessoa vê seus links públicos sem acessar suas partes reservadas."
+            value={draft.showSocialLinks}
+            onValueChange={(value) => setDraft((current) => ({ ...current, showSocialLinks: value }))}
+          />
+          <Input
+            label="Instagram"
+            placeholder="https://instagram.com/..."
+            value={draft.instagramUrl}
+            onChangeText={(value) => setDraft((current) => ({ ...current, instagramUrl: value }))}
+          />
+          <Input
+            label="TikTok"
+            placeholder="https://tiktok.com/@..."
+            value={draft.tiktokUrl}
+            onChangeText={(value) => setDraft((current) => ({ ...current, tiktokUrl: value }))}
+          />
+          <Input
+            label="Snapchat"
+            placeholder="https://snapchat.com/add/..."
+            value={draft.snapchatUrl}
+            onChangeText={(value) => setDraft((current) => ({ ...current, snapchatUrl: value }))}
+          />
+          <Input
+            label="Outro link"
+            placeholder="Site, X, Threads ou outra rede"
+            value={draft.otherSocialUrl}
+            onChangeText={(value) => setDraft((current) => ({ ...current, otherSocialUrl: value }))}
+          />
+          <PrivacyToggle
+            title="Liberar telefone e WhatsApp após match"
+            description="O contato direto só aparece para conexões aceitas."
+            value={draft.showPhoneNumber}
+            onValueChange={(value) => setDraft((current) => ({ ...current, showPhoneNumber: value }))}
+          />
+          <Input
+            label="Telefone"
+            placeholder="+55 11 99999-9999"
+            keyboardType="phone-pad"
+            value={draft.phoneNumber}
+            onChangeText={(value) => setDraft((current) => ({ ...current, phoneNumber: value }))}
+          />
+          <Input
+            label="Link WhatsApp"
+            placeholder="https://wa.me/5511999999999"
+            value={draft.whatsappUrl}
+            onChangeText={(value) => setDraft((current) => ({ ...current, whatsappUrl: value }))}
+          />
+        </Card>
+
+        <Card style={{ padding: 18 }}>
+          <SectionHeader
+            eyebrow="Mídia"
+            title="Monte sua vitrine por camada."
+            description="Stories mostram o momento. Fotos sustentam o perfil. Você decide o que é público e o que fica para match."
+          />
+          <View style={{ gap: 10 }}>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
-                <Card style={{ padding: 14 }}>
-                  <AppText variant="eyebrow">Story publico</AppText>
-                  <AppText variant="sectionTitle">{draft.storyPhotoUrls.split('\n').filter(Boolean).length}</AppText>
-                  <SecondaryButton title="Adicionar" compact onPress={() => pickImage('storyPhotoUrls')} />
-                </Card>
+                {mediaMode === 'public-story' ? (
+                  <PrimaryButton title="Story público" compact onPress={() => undefined} />
+                ) : (
+                  <SecondaryButton title="Story público" compact onPress={() => setMediaMode('public-story')} />
+                )}
               </View>
               <View style={{ flex: 1 }}>
-                <Card style={{ padding: 14 }}>
-                  <AppText variant="eyebrow">Story so match</AppText>
-                  <AppText variant="sectionTitle">{draft.matchOnlyStoryPhotoUrls.split('\n').filter(Boolean).length}</AppText>
-                  <SecondaryButton
-                    title="Adicionar"
-                    compact
-                    onPress={() => pickImage('matchOnlyStoryPhotoUrls')}
-                  />
-                </Card>
+                {mediaMode === 'match-story' ? (
+                  <PrimaryButton title="Story só match" compact onPress={() => undefined} />
+                ) : (
+                  <SecondaryButton title="Story só match" compact onPress={() => setMediaMode('match-story')} />
+                )}
               </View>
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
-                <Card style={{ padding: 14 }}>
-                  <AppText variant="eyebrow">Fotos publicas</AppText>
-                  <AppText variant="sectionTitle">{draft.publicPhotoUrls.split('\n').filter(Boolean).length}</AppText>
-                  <SecondaryButton title="Adicionar" compact onPress={() => pickImage('publicPhotoUrls')} />
-                </Card>
+                {mediaMode === 'public-photo' ? (
+                  <PrimaryButton title="Fotos públicas" compact onPress={() => undefined} />
+                ) : (
+                  <SecondaryButton title="Fotos públicas" compact onPress={() => setMediaMode('public-photo')} />
+                )}
               </View>
               <View style={{ flex: 1 }}>
-                <Card style={{ padding: 14 }}>
-                  <AppText variant="eyebrow">Fotos privadas</AppText>
-                  <AppText variant="sectionTitle">{draft.matchOnlyPhotoUrls.split('\n').filter(Boolean).length}</AppText>
-                  <SecondaryButton title="Adicionar" compact onPress={() => pickImage('matchOnlyPhotoUrls')} />
-                </Card>
+                {mediaMode === 'match-photo' ? (
+                  <PrimaryButton title="Fotos privadas" compact onPress={() => undefined} />
+                ) : (
+                  <SecondaryButton title="Fotos privadas" compact onPress={() => setMediaMode('match-photo')} />
+                )}
               </View>
             </View>
           </View>
+          <MediaPanel
+            title={activeMediaPanel.title}
+            description={activeMediaPanel.description}
+            items={activeMediaPanel.items}
+            tall={activeMediaPanel.tall}
+            onAdd={() => pickImage(activeMediaPanel.field)}
+          />
         </Card>
 
-        <Card>
-          <View style={{ gap: 12 }}>
-            <AppText variant="sectionTitle">Raio padrao</AppText>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              {radiusOptions.map((option) => (
-                <View key={option.value} style={{ flex: 1 }}>
-                  {draft.preferredRadiusMeters === option.value ? (
-                    <PrimaryButton title={option.label} compact onPress={() => undefined} />
-                  ) : (
-                    <SecondaryButton
-                      title={option.label}
-                      compact
-                      onPress={() => setDraft((current) => ({ ...current, preferredRadiusMeters: option.value }))}
-                    />
-                  )}
-                </View>
-              ))}
-            </View>
-          </View>
+        <Card style={{ padding: 18 }}>
+          <SectionHeader
+            eyebrow="Raio padrão"
+            title="Controle sua distância."
+            description="Defina o alcance inicial sempre que entrar no radar."
+          />
+          <SegmentedControl
+            options={radiusOptions}
+            selectedValue={draft.preferredRadiusMeters}
+            onChange={(value) => setDraft((current) => ({ ...current, preferredRadiusMeters: value }))}
+          />
         </Card>
 
         {message ? <AppText variant="bodyMuted">{message}</AppText> : null}
