@@ -1,55 +1,52 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
-import { View } from 'react-native';
-import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
+import { Pressable, Text, View } from 'react-native';
 import { PrimaryButton, SecondaryButton } from '@/components/button';
 import { Input } from '@/components/input';
 import { NearMeLogo } from '@/components/logo';
 import { Screen } from '@/components/screen';
 import { AppText } from '@/components/text';
-import { env } from '@/config/env';
 import { getErrorMessage } from '@/services/http';
 import { useSession } from '@/state/session';
+import { colors } from '@/theme/colors';
 
-WebBrowser.maybeCompleteAuthSession();
+function GoogleUnavailableButton() {
+  return (
+    <View style={{ gap: 8 }}>
+      <Pressable
+        disabled
+        style={{
+          backgroundColor: colors.surfaceAlt,
+          borderColor: colors.borderSubtle,
+          borderWidth: 1,
+          minHeight: 52,
+          paddingHorizontal: 16,
+          borderRadius: 999,
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'row',
+          gap: 10,
+          opacity: 0.45,
+        }}
+      >
+        <Ionicons name="logo-google" size={18} color={colors.text} />
+        <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15 }}>Entrar com Google</Text>
+      </Pressable>
+      <AppText variant="bodyMuted">
+        Login com Google temporariamente indisponivel neste runtime do Expo Go. Use login com e-mail agora.
+      </AppText>
+    </View>
+  );
+}
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { signIn, signInWithGoogle } = useSession();
+  const { signIn } = useSession();
   const [email, setEmail] = useState('demo@nearme.app');
   const [password, setPassword] = useState('123456');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    androidClientId: env.googleAndroidClientId,
-    iosClientId: env.googleIosClientId,
-    webClientId: env.googleWebClientId,
-    selectAccount: true,
-  });
-
-  const handleGoogleLogin = async () => {
-    if (!env.googleAndroidClientId || !env.googleIosClientId || !env.googleWebClientId) {
-      throw new Error('Configure os client IDs do Google no app antes de continuar.');
-    }
-
-    const result = await promptAsync();
-
-    if (result.type !== 'success') {
-      return;
-    }
-
-    const idToken =
-      (result.type === 'success' ? result.params?.id_token : '') ||
-      (response?.type === 'success' ? response.params?.id_token : '') ||
-      '';
-
-    if (!idToken) {
-      throw new Error('Google nao retornou um ID token valido.');
-    }
-
-    await signInWithGoogle(idToken);
-  };
 
   return (
     <Screen scroll>
@@ -96,22 +93,8 @@ export default function LoginScreen() {
             }
           }}
         />
-        <SecondaryButton
-          title="Entrar com Google"
-          disabled={isSubmitting || !request}
-          onPress={async () => {
-            try {
-              setIsSubmitting(true);
-              setError('');
-              await handleGoogleLogin();
-              router.replace('/home');
-            } catch (nextError) {
-              setError(getErrorMessage(nextError));
-            } finally {
-              setIsSubmitting(false);
-            }
-          }}
-        />
+
+        <GoogleUnavailableButton />
 
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <SecondaryButton title="Cadastro rapido" onPress={() => router.push('/register')} compact />

@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { compare, hash } from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
@@ -73,26 +78,50 @@ export class AuthService {
       },
     });
 
-    await this.profilesService.ensureDemoNetworkForUser(user.id);
+    try {
+      await this.profilesService.ensureDemoNetworkForUser(user.id);
+    } catch (error) {
+      throw new InternalServerErrorException(
+        `Falha ao preparar a conta apos o cadastro: ${
+          error instanceof Error ? error.message : 'erro desconhecido'
+        }`,
+      );
+    }
 
     const verification = this.issueToken();
     await this.prisma.emailVerificationToken.deleteMany({
       where: { userId: user.id, usedAt: null },
     });
 
-    await this.prisma.emailVerificationToken.create({
-      data: {
-        userId: user.id,
-        tokenHash: verification.tokenHash,
-        expiresAt: new Date(Date.now() + this.verificationTokenTtlMs),
-      },
-    });
+    try {
+      await this.prisma.emailVerificationToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: verification.tokenHash,
+          expiresAt: new Date(Date.now() + this.verificationTokenTtlMs),
+        },
+      });
+    } catch (error) {
+      throw new InternalServerErrorException(
+        `Falha ao criar o token de confirmacao: ${
+          error instanceof Error ? error.message : 'erro desconhecido'
+        }`,
+      );
+    }
 
-    await this.emailService.sendEmailVerification({
-      to: user.email,
-      name: user.name,
-      token: verification.token,
-    });
+    try {
+      await this.emailService.sendEmailVerification({
+        to: user.email,
+        name: user.name,
+        token: verification.token,
+      });
+    } catch (error) {
+      throw new InternalServerErrorException(
+        `Falha ao enviar o e-mail de confirmacao: ${
+          error instanceof Error ? error.message : 'erro desconhecido'
+        }`,
+      );
+    }
 
     return {
       success: true,
