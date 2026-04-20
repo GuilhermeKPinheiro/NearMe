@@ -47,6 +47,7 @@ export type Profile = {
   storyPhotoUrls: string | null;
   matchOnlyStoryPhotoUrls: string | null;
   preferredRadiusMeters: number;
+  updatedAt?: string;
 };
 
 export type VisibilitySession = {

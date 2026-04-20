@@ -25,8 +25,8 @@ export default function RegisterScreen() {
       <View style={{ gap: 18 }}>
         <NearMeLogo />
         <View style={{ gap: 8 }}>
-          <AppText variant="title">Cadastro rápido, presença discreta.</AppText>
-          <AppText variant="bodyMuted">Entre em minutos. Depois você decide redes, WhatsApp e fotos privadas.</AppText>
+          <AppText variant="title">Crie sua conta.</AppText>
+          <AppText variant="bodyMuted">Comece com o básico. O restante do perfil você ajusta depois.</AppText>
         </View>
 
         <Input label="Nome" placeholder="Seu nome" value={name} onChangeText={setName} />
@@ -42,6 +42,9 @@ export default function RegisterScreen() {
           label="Senha"
           placeholder="********"
           secureTextEntry
+          autoCapitalize="none"
+          autoComplete="off"
+          textContentType="oneTimeCode"
           value={password}
           onChangeText={setPassword}
         />
@@ -49,6 +52,9 @@ export default function RegisterScreen() {
           label="Confirmar senha"
           placeholder="********"
           secureTextEntry
+          autoCapitalize="none"
+          autoComplete="off"
+          textContentType="oneTimeCode"
           value={confirmPassword}
           onChangeText={setConfirmPassword}
         />
@@ -57,7 +63,7 @@ export default function RegisterScreen() {
         {success ? <AppText variant="bodyMuted">{success}</AppText> : null}
 
         <PrimaryButton
-          title={isSubmitting ? 'Criando...' : 'Criar conta'}
+          title={isSubmitting ? 'Criando…' : 'Criar conta'}
           disabled={isSubmitting}
           onPress={async () => {
             if (password !== confirmPassword) {
@@ -78,7 +84,7 @@ export default function RegisterScreen() {
             }
           }}
         />
-        <SecondaryButton title="Ir para login" onPress={() => router.push('/login')} />
+        <SecondaryButton title="Já tenho conta" onPress={() => router.push('/login')} />
       </View>
     </Screen>
   );

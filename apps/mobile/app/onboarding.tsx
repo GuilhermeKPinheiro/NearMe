@@ -9,17 +9,17 @@ import { useSession } from '@/state/session';
 
 const steps = [
   {
-    title: 'Entre no radar da festa',
-    description: 'Escolha o raio e apareca so quando fizer sentido.'
+    title: 'Entre no radar do momento',
+    description: 'Escolha o raio e apareça só quando fizer sentido.',
   },
   {
     title: 'Mostre o suficiente',
-    description: 'Stories, fotos publicas e uma frase curta ajudam sem expor seu perfil inteiro.'
+    description: 'Momentos, fotos públicas e uma frase curta ajudam sem expor seu perfil inteiro.',
   },
   {
-    title: 'Direcione para suas redes',
-    description: 'Instagram, TikTok e outros links podem aparecer. WhatsApp e fotos privadas ficam para o match.'
-  }
+    title: 'Construa sua rede por perto',
+    description: 'Quem cruzar seu momento pode pedir conexão. O restante acontece dentro do NearMe.',
+  },
 ];
 
 export default function OnboardingScreen() {
@@ -38,7 +38,7 @@ export default function OnboardingScreen() {
               backgroundColor: colors.surface,
               overflow: 'hidden',
               justifyContent: 'flex-end',
-              padding: 22
+              padding: 22,
             }}
           >
             <View
@@ -50,7 +50,7 @@ export default function OnboardingScreen() {
                 backgroundColor: colors.glow,
                 top: -42,
                 right: -36,
-                opacity: 0.95
+                opacity: 0.95,
               }}
             />
             <View
@@ -62,13 +62,13 @@ export default function OnboardingScreen() {
                 backgroundColor: colors.surfaceAlt,
                 bottom: 22,
                 left: -34,
-                opacity: 0.9
+                opacity: 0.9,
               }}
             />
             <AppText variant="eyebrow" style={{ color: colors.accentWarm }}>
-              Social nearby
+              Perto agora
             </AppText>
-            <AppText variant="title">Conexoes discretas para o momento certo.</AppText>
+            <AppText variant="title">Rede social por proximidade, no ritmo certo.</AppText>
           </View>
         </View>
 
@@ -83,13 +83,13 @@ export default function OnboardingScreen() {
 
         <View style={{ gap: 12 }}>
           <PrimaryButton
-            title="Comecar cadastro rapido"
+            title="Começar cadastro"
             onPress={async () => {
               await markOnboardingSeen();
               router.replace('/register');
             }}
           />
-          <SecondaryButton title="Ja tenho conta" onPress={() => router.push('/login')} />
+          <SecondaryButton title="Já tenho conta" onPress={() => router.push('/login')} />
         </View>
       </View>
     </Screen>

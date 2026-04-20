@@ -66,6 +66,7 @@ model User {
   connectionsAsUserA Connection[]        @relation("ConnectionUserA")
   connectionsAsUserB Connection[]        @relation("ConnectionUserB")
   notifications     Notification[]
+  pushDevices       PushDevice[]
   blocksMade        BlockedUser[]        @relation("BlockedUserBlocker")
   blocksReceived    BlockedUser[]        @relation("BlockedUserBlocked")
   emailVerificationTokens EmailVerificationToken[]
@@ -207,6 +208,22 @@ model Notification {
   user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, readAt])
+}
+
+model PushDevice {
+  id            String   @id @default(uuid())
+  userId        String
+  expoPushToken String   @unique
+  platform      String
+  deviceName    String?
+  appBuild      String?
+  lastSeenAt    DateTime @default(now())
+  disabledAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, disabledAt])
 }
 
 model BlockedUser {

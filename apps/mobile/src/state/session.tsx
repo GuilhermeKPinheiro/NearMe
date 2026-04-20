@@ -1,12 +1,15 @@
 import type { ReactNode } from 'react';
 import { AppState } from 'react-native';
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { loginWithEmail, loginWithGoogleIdToken, registerWithEmail } from '@/services/auth';
+import { debugLog, measureAsync } from '@/services/diagnostics';
 import { getErrorMessage } from '@/services/http';
 import type { DeviceLocation } from '@/services/location';
 import { getCurrentDeviceLocation } from '@/services/location';
 import { listNearbyUsers } from '@/services/nearby';
+import { ensurePushDeviceRegistered, unregisterCurrentPushDevice } from '@/services/push';
 import { getMyProfile, updateMyProfile, type ProfileDraft } from '@/services/profile';
+import { realtimeClient } from '@/services/realtime';
 import { sessionStorage } from '@/state/session-storage';
 import type { Profile, User, Venue, VisibilitySession } from '@/types/domain';
 import {
@@ -14,7 +17,7 @@ import {
   leaveVenueSession,
   startVisibilitySession,
   stopVisibilitySession,
-  updateVisibilityLocation
+  updateVisibilityLocation,
 } from '@/services/visibility';
 
 const LOCATION_REFRESH_MS = 60_000;
@@ -53,6 +56,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [visibilitySession, setVisibilitySession] = useState<VisibilitySession | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const userRef = useRef<User | null>(null);
+  const profileRef = useRef<Profile | null>(null);
+  const isVisibleRef = useRef(false);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
+    profileRef.current = profile;
+  }, [profile]);
+
+  useEffect(() => {
+    isVisibleRef.current = isVisible;
+  }, [isVisible]);
 
   useEffect(() => {
     let mounted = true;
@@ -62,7 +80,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         sessionStorage.getToken(),
         sessionStorage.getOnboardingSeen(),
         sessionStorage.getVisibility(),
-        sessionStorage.getSnapshot()
+        sessionStorage.getSnapshot(),
       ]);
 
       if (!mounted) {
@@ -78,9 +96,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (token) {
         try {
           const [freshProfile, visibilityStatus, nearby] = await Promise.all([
-            getMyProfile(),
-            getVisibilityStatus(),
-            listNearbyUsers()
+            measureAsync('session', 'bootstrapProfile', () => getMyProfile()),
+            measureAsync('session', 'bootstrapVisibility', () => getVisibilityStatus()),
+            measureAsync('session', 'bootstrapNearby', () => listNearbyUsers()),
           ]);
 
           if (!mounted) {
@@ -95,9 +113,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           await sessionStorage.setVisibility(visibilityStatus.isVisible);
           await sessionStorage.setSnapshot({
             user: snapshot?.user ?? null,
-            profile: freshProfile
+            profile: freshProfile,
           });
-        } catch {
+        } catch (error) {
+          debugLog(
+            'session',
+            'bootstrapFailed',
+            { error: error instanceof Error ? error.message : String(error) },
+            'error'
+          );
           await sessionStorage.clearToken();
           await sessionStorage.clearSnapshot();
           setIsAuthenticated(false);
@@ -117,6 +141,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      realtimeClient.disconnect();
+      return;
+    }
+
+    void sessionStorage.getToken().then(async (token) => {
+      if (token) {
+        realtimeClient.connect(token);
+        await ensurePushDeviceRegistered();
+      }
+    });
+
+    return () => {
+      realtimeClient.disconnect();
+    };
+  }, [isAuthenticated]);
+
+  useEffect(() => {
     if (!isAuthenticated || !isVisible) {
       return;
     }
@@ -131,8 +173,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       isRunning = true;
 
       try {
-        const location = await getCurrentDeviceLocation();
-        const result = await updateVisibilityLocation(location);
+        const location = await measureAsync('session', 'backgroundLocationLookup', () => getCurrentDeviceLocation());
+        const result = await measureAsync('session', 'backgroundVisibilityRefresh', () => updateVisibilityLocation(location));
         setVisibilitySession(result.session);
         setActiveVenue(result.session?.venue ?? null);
       } catch {
@@ -162,6 +204,210 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
   }, [isAuthenticated, isVisible]);
 
+  const markOnboardingSeen = useCallback(async () => {
+    await measureAsync('session', 'markOnboardingSeen', () => sessionStorage.setOnboardingSeen());
+    setHasSeenOnboarding(true);
+  }, []);
+
+  const signIn = useCallback(async (email: string, password: string) => {
+    const result = await measureAsync('session', 'signIn', () => loginWithEmail(email, password), {
+      email,
+    });
+
+    await measureAsync('session', 'persistSignIn', async () => {
+      await sessionStorage.setToken(result.accessToken);
+      await sessionStorage.setSnapshot({
+        user: result.user,
+        profile: result.profile,
+      });
+    });
+
+    setIsAuthenticated(true);
+    setUser(result.user);
+    setProfile(result.profile);
+
+    const [visibility, nearby] = await Promise.all([
+      measureAsync('session', 'signInVisibilityStatus', () => getVisibilityStatus()),
+      measureAsync('session', 'signInNearbyUsers', () => listNearbyUsers()),
+    ]);
+
+    setIsVisible(visibility.isVisible);
+    setVisibilitySession(visibility.session);
+    setActiveVenue(visibility.session?.venue ?? null);
+    setNearbyCount(nearby.summary.count);
+    await sessionStorage.setVisibility(visibility.isVisible);
+  }, []);
+
+  const signUp = useCallback(async (name: string, email: string, password: string) => {
+    const result = await measureAsync('session', 'signUp', () => registerWithEmail(name, email, password), {
+      email,
+      nameLength: name.length,
+    });
+
+    return {
+      message: result.message,
+      email: result.email,
+    };
+  }, []);
+
+  const signInWithGoogle = useCallback(async (idToken: string) => {
+    const result = await measureAsync('session', 'signInWithGoogle', () => loginWithGoogleIdToken(idToken));
+
+    await measureAsync('session', 'persistGoogleSignIn', async () => {
+      await sessionStorage.setToken(result.accessToken);
+      await sessionStorage.setSnapshot({
+        user: result.user,
+        profile: result.profile,
+      });
+    });
+
+    setIsAuthenticated(true);
+    setUser(result.user);
+    setProfile(result.profile);
+
+    const [visibility, nearby] = await Promise.all([
+      measureAsync('session', 'googleVisibilityStatus', () => getVisibilityStatus()),
+      measureAsync('session', 'googleNearbyUsers', () => listNearbyUsers()),
+    ]);
+
+    setIsVisible(visibility.isVisible);
+    setVisibilitySession(visibility.session);
+    setActiveVenue(visibility.session?.venue ?? null);
+    setNearbyCount(nearby.summary.count);
+  }, []);
+
+  const signOut = useCallback(async () => {
+    try {
+      await unregisterCurrentPushDevice();
+    } catch {
+      // Push cleanup is best-effort during sign out.
+    }
+
+    await measureAsync('session', 'signOut', async () => {
+      await sessionStorage.clearToken();
+      await sessionStorage.clearSnapshot();
+    });
+
+    setIsAuthenticated(false);
+    setUser(null);
+    setProfile(null);
+    setIsVisible(false);
+    setVisibilitySession(null);
+    setActiveVenue(null);
+    setNearbyCount(0);
+  }, []);
+
+  const setVisible = useCallback(async (value: boolean, location?: DeviceLocation) => {
+    const result = await measureAsync(
+      'session',
+      value ? 'startVisibilitySession' : 'stopVisibilitySession',
+      () => (value ? startVisibilitySession(location) : stopVisibilitySession()),
+      { hasLocation: Boolean(location) }
+    );
+
+    await sessionStorage.setVisibility(result.isVisible);
+    setIsVisible(result.isVisible);
+    setVisibilitySession(result.session);
+    setActiveVenue(result.session?.venue ?? null);
+
+    if (!result.isVisible) {
+      setNearbyCount(0);
+      return;
+    }
+
+    const nearby = await measureAsync('session', 'refreshNearbyAfterVisibility', () => listNearbyUsers());
+    setNearbyCount(nearby.summary.count);
+  }, []);
+
+  const refreshVisibilityLocation = useCallback(async (location: DeviceLocation) => {
+    const result = await measureAsync('session', 'refreshVisibilityLocation', () => updateVisibilityLocation(location), {
+      accuracyMeters: location.accuracyMeters,
+    });
+
+    await sessionStorage.setVisibility(result.isVisible);
+    setIsVisible(result.isVisible);
+    setVisibilitySession(result.session);
+    setActiveVenue(result.session?.venue ?? null);
+
+    const nearby = await measureAsync('session', 'refreshNearbyAfterLocation', () => listNearbyUsers());
+    setNearbyCount(nearby.summary.count);
+  }, []);
+
+  const leaveVenue = useCallback(async () => {
+    const result = await measureAsync('session', 'leaveVenue', () => leaveVenueSession());
+    setVisibilitySession(result.session);
+    setActiveVenue(result.session?.venue ?? null);
+  }, []);
+
+  const refreshDashboard = useCallback(async () => {
+    debugLog('session', 'refreshDashboard:start', {
+      hasUser: Boolean(userRef.current),
+      hasProfile: Boolean(profileRef.current),
+      isVisible: isVisibleRef.current,
+    });
+
+    const [profileResult, visibilityResult, nearbyResult] = await Promise.allSettled([
+      measureAsync('session', 'dashboardProfile', () => getMyProfile()),
+      measureAsync('session', 'dashboardVisibility', () => getVisibilityStatus()),
+      measureAsync('session', 'dashboardNearby', () => listNearbyUsers()),
+    ]);
+
+    if (profileResult.status === 'fulfilled') {
+      setProfile(profileResult.value);
+      await sessionStorage.setSnapshot({
+        user: userRef.current,
+        profile: profileResult.value,
+      });
+    }
+
+    if (visibilityResult.status === 'fulfilled') {
+      setIsVisible(visibilityResult.value.isVisible);
+      setVisibilitySession(visibilityResult.value.session);
+      setActiveVenue(visibilityResult.value.session?.venue ?? null);
+      await sessionStorage.setVisibility(visibilityResult.value.isVisible);
+
+      if (!visibilityResult.value.isVisible) {
+        setNearbyCount(0);
+      }
+    }
+
+    if (nearbyResult.status === 'fulfilled' && visibilityResult.status === 'fulfilled' && visibilityResult.value.isVisible) {
+      setNearbyCount(nearbyResult.value.summary.count);
+    }
+
+    debugLog('session', 'refreshDashboard:done', {
+      profile: profileResult.status,
+      visibility: visibilityResult.status,
+      nearby: nearbyResult.status,
+    });
+
+    if (
+      profileResult.status === 'rejected' &&
+      visibilityResult.status === 'rejected' &&
+      nearbyResult.status === 'rejected'
+    ) {
+      throw new Error(getErrorMessage(profileResult.reason));
+    }
+  }, []);
+
+  const saveProfile = useCallback(
+    async (draft: ProfileDraft) => {
+      const nextProfile = await measureAsync('session', 'saveProfile', () => updateMyProfile(draft), {
+        hasPhoto: Boolean(draft.photoUrl),
+        publicPhotos: draft.publicPhotoUrls ? draft.publicPhotoUrls.split('\n').filter(Boolean).length : 0,
+        publicStories: draft.storyPhotoUrls ? draft.storyPhotoUrls.split('\n').filter(Boolean).length : 0,
+        matchStories: draft.matchOnlyStoryPhotoUrls ? draft.matchOnlyStoryPhotoUrls.split('\n').filter(Boolean).length : 0,
+      });
+
+      setProfile(nextProfile);
+      await sessionStorage.setSnapshot({
+        user: userRef.current,
+        profile: nextProfile,
+      });
+    },
+    []
+  );
+
   const value = useMemo<SessionState>(
     () => ({
       isBootstrapped,
@@ -173,117 +419,38 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       visibilitySession,
       user,
       profile,
-      markOnboardingSeen: async () => {
-        await sessionStorage.setOnboardingSeen();
-        setHasSeenOnboarding(true);
-      },
-      signIn: async (email: string, password: string) => {
-        const result = await loginWithEmail(email, password);
-        await sessionStorage.setToken(result.accessToken);
-        await sessionStorage.setSnapshot({
-          user: result.user,
-          profile: result.profile
-        });
-        setIsAuthenticated(true);
-        setUser(result.user);
-        setProfile(result.profile);
-        const visibility = await getVisibilityStatus();
-        const nearby = await listNearbyUsers();
-        setIsVisible(visibility.isVisible);
-        setVisibilitySession(visibility.session);
-        setActiveVenue(visibility.session?.venue ?? null);
-        setNearbyCount(nearby.summary.count);
-        await sessionStorage.setVisibility(visibility.isVisible);
-      },
-      signUp: async (name: string, email: string, password: string) => {
-        const result = await registerWithEmail(name, email, password);
-        return {
-          message: result.message,
-          email: result.email
-        };
-      },
-      signInWithGoogle: async (idToken: string) => {
-        const result = await loginWithGoogleIdToken(idToken);
-        await sessionStorage.setToken(result.accessToken);
-        await sessionStorage.setSnapshot({
-          user: result.user,
-          profile: result.profile
-        });
-        setIsAuthenticated(true);
-        setUser(result.user);
-        setProfile(result.profile);
-        const visibility = await getVisibilityStatus();
-        const nearby = await listNearbyUsers();
-        setIsVisible(visibility.isVisible);
-        setVisibilitySession(visibility.session);
-        setActiveVenue(visibility.session?.venue ?? null);
-        setNearbyCount(nearby.summary.count);
-      },
-      signOut: async () => {
-        await sessionStorage.clearToken();
-        await sessionStorage.clearSnapshot();
-        setIsAuthenticated(false);
-        setUser(null);
-        setProfile(null);
-        setIsVisible(false);
-        setVisibilitySession(null);
-        setActiveVenue(null);
-        setNearbyCount(0);
-      },
-      setVisible: async (value: boolean, location?: DeviceLocation) => {
-        const result = value ? await startVisibilitySession(location) : await stopVisibilitySession();
-        await sessionStorage.setVisibility(result.isVisible);
-        setIsVisible(result.isVisible);
-        setVisibilitySession(result.session);
-        setActiveVenue(result.session?.venue ?? null);
-        const nearby = await listNearbyUsers();
-        setNearbyCount(nearby.summary.count);
-      },
-      refreshVisibilityLocation: async (location: DeviceLocation) => {
-        const result = await updateVisibilityLocation(location);
-        await sessionStorage.setVisibility(result.isVisible);
-        setIsVisible(result.isVisible);
-        setVisibilitySession(result.session);
-        setActiveVenue(result.session?.venue ?? null);
-        const nearby = await listNearbyUsers();
-        setNearbyCount(nearby.summary.count);
-      },
-      leaveVenue: async () => {
-        const result = await leaveVenueSession();
-        setVisibilitySession(result.session);
-        setActiveVenue(result.session?.venue ?? null);
-      },
-      refreshDashboard: async () => {
-        try {
-          const [freshProfile, visibility, nearby] = await Promise.all([
-            getMyProfile(),
-            getVisibilityStatus(),
-            listNearbyUsers()
-          ]);
-          setProfile(freshProfile);
-          setIsVisible(visibility.isVisible);
-          setVisibilitySession(visibility.session);
-          setActiveVenue(visibility.session?.venue ?? null);
-          setNearbyCount(nearby.summary.count);
-          await sessionStorage.setVisibility(visibility.isVisible);
-          await sessionStorage.setSnapshot({
-            user,
-            profile: freshProfile
-          });
-        } catch (error) {
-          throw new Error(getErrorMessage(error));
-        }
-      },
-      saveProfile: async (draft: ProfileDraft) => {
-        const nextProfile = await updateMyProfile(draft);
-        setProfile(nextProfile);
-        await sessionStorage.setSnapshot({
-          user,
-          profile: nextProfile
-        });
-      }
+      markOnboardingSeen,
+      signIn,
+      signUp,
+      signInWithGoogle,
+      signOut,
+      setVisible,
+      refreshVisibilityLocation,
+      leaveVenue,
+      refreshDashboard,
+      saveProfile,
     }),
-    [activeVenue, hasSeenOnboarding, isAuthenticated, isBootstrapped, isVisible, nearbyCount, profile, user, visibilitySession]
+    [
+      activeVenue,
+      hasSeenOnboarding,
+      isAuthenticated,
+      isBootstrapped,
+      isVisible,
+      leaveVenue,
+      markOnboardingSeen,
+      nearbyCount,
+      profile,
+      refreshDashboard,
+      refreshVisibilityLocation,
+      saveProfile,
+      setVisible,
+      signIn,
+      signInWithGoogle,
+      signOut,
+      signUp,
+      user,
+      visibilitySession,
+    ]
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

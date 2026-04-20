@@ -38,5 +38,6 @@ export function toOwnProfile(profile: Profile | null) {
     storyPhotoUrls: profile.storyPhotoUrls,
     matchOnlyStoryPhotoUrls: profile.matchOnlyStoryPhotoUrls,
     preferredRadiusMeters: profile.preferredRadiusMeters,
+    updatedAt: profile.updatedAt,
   };
 }

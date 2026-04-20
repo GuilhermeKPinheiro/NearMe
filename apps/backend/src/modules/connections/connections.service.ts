@@ -5,6 +5,8 @@ import {
 } from '@nestjs/common';
 import { ConnectionRequestStatus, NotificationType } from '../../generated/prisma/enums';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { RealtimeService } from '../realtime/realtime.service';
 
 function buildPairKey(firstId: string, secondId: string) {
   return [firstId, secondId].sort().join(':');
@@ -12,7 +14,11 @@ function buildPairKey(firstId: string, secondId: string) {
 
 @Injectable()
 export class ConnectionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+    private readonly realtimeService: RealtimeService,
+  ) {}
 
   async createRequest(fromUserId: string, toUserId: string) {
     if (fromUserId === toUserId) {
@@ -39,14 +45,24 @@ export class ConnectionsService {
       },
     });
 
-    await this.prisma.notification.create({
-      data: {
-        userId: toUserId,
-        type: NotificationType.CONNECTION_REQUEST,
-        title: 'Novo pedido de conexao',
-        body: 'Alguem proximo quer se conectar com voce.',
+    await this.notificationsService.createAndDispatch({
+      userId: toUserId,
+      type: NotificationType.CONNECTION_REQUEST,
+      title: 'Novo pedido de conexão',
+      body: 'Alguém por perto quer se conectar com você.',
+      realtimeReason: 'CONNECTION_REQUEST',
+      metadata: {
+        actorUserId: fromUserId,
+        requestId: request.id,
+        route: {
+          screen: 'connections',
+          tab: 'received',
+        },
       },
     });
+
+    this.realtimeService.publishConnectionsUpdated(fromUserId, 'REQUEST_CREATED');
+    this.realtimeService.publishConnectionsUpdated(toUserId, 'REQUEST_CREATED');
 
     return { request };
   }
@@ -80,14 +96,24 @@ export class ConnectionsService {
       },
     });
 
-    await this.prisma.notification.create({
-      data: {
-        userId: request.fromUserId,
-        type: NotificationType.CONNECTION_ACCEPTED,
-        title: 'Conexao aceita',
-        body: 'Seu pedido de conexao foi aceito.',
+    await this.notificationsService.createAndDispatch({
+      userId: request.fromUserId,
+      type: NotificationType.CONNECTION_ACCEPTED,
+      title: 'Conexão aceita',
+      body: 'Seu pedido de conexão foi aceito.',
+      realtimeReason: 'CONNECTION_ACCEPTED',
+      metadata: {
+        actorUserId: request.toUserId,
+        requestId: request.id,
+        route: {
+          screen: 'connections',
+          tab: 'connections',
+        },
       },
     });
+
+    this.realtimeService.publishConnectionsUpdated(request.fromUserId, 'REQUEST_ACCEPTED');
+    this.realtimeService.publishConnectionsUpdated(request.toUserId, 'REQUEST_ACCEPTED');
 
     return { request: updatedRequest };
   }
@@ -109,6 +135,9 @@ export class ConnectionsService {
       },
     });
 
+    this.realtimeService.publishConnectionsUpdated(request.fromUserId, 'REQUEST_REJECTED');
+    this.realtimeService.publishConnectionsUpdated(request.toUserId, 'REQUEST_REJECTED');
+
     return { request: updatedRequest };
   }
 
@@ -117,6 +146,13 @@ export class ConnectionsService {
       this.prisma.connectionRequest.findMany({
         where: {
           toUserId: userId,
+          fromUser: {
+            email: {
+              not: {
+                endsWith: '@nearme.app',
+              },
+            },
+          },
         },
         orderBy: {
           createdAt: 'desc',
@@ -130,6 +166,13 @@ export class ConnectionsService {
       this.prisma.connectionRequest.findMany({
         where: {
           fromUserId: userId,
+          toUser: {
+            email: {
+              not: {
+                endsWith: '@nearme.app',
+              },
+            },
+          },
         },
         orderBy: {
           createdAt: 'desc',
@@ -143,6 +186,26 @@ export class ConnectionsService {
       this.prisma.connection.findMany({
         where: {
           OR: [{ userAId: userId }, { userBId: userId }],
+          AND: [
+            {
+              userA: {
+                email: {
+                  not: {
+                    endsWith: '@nearme.app',
+                  },
+                },
+              },
+            },
+            {
+              userB: {
+                email: {
+                  not: {
+                    endsWith: '@nearme.app',
+                  },
+                },
+              },
+            },
+          ],
         },
         orderBy: {
           createdAt: 'desc',

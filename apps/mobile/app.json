@@ -38,6 +38,12 @@
         {
           "cameraPermission": "Use a camera para ler o QR de entrada de um local ou evento no NearMe."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#e4cf8c"
+        }
       ]
     ],
     "extra": {

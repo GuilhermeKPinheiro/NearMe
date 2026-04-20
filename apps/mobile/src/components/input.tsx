@@ -15,6 +15,8 @@ export function Input({ label, style, ...props }: InputProps) {
       </AppText>
       <TextInput
         placeholderTextColor={colors.muted}
+        autoCorrect={props.autoCorrect ?? false}
+        autoCapitalize={props.autoCapitalize ?? 'sentences'}
         style={[
           {
             backgroundColor: colors.surfaceAlt,

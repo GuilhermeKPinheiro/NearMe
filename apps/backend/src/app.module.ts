@@ -14,6 +14,7 @@ import { HealthModule } from './modules/health/health.module';
 import { VenuesModule } from './modules/venues/venues.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { EmailModule } from './modules/email/email.module';
+import { RealtimeModule } from './modules/realtime/realtime.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { EmailModule } from './modules/email/email.module';
     ProximityModule,
     ConnectionsModule,
     NotificationsModule,
+    RealtimeModule,
     VenuesModule,
     UploadsModule,
     EmailModule,

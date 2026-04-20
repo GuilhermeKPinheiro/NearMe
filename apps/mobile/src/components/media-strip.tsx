@@ -42,7 +42,7 @@ export function MediaStrip({ title, items, emptyLabel, tall = false }: MediaStri
           }}
         >
           <AppText variant="bodyMuted" style={{ textAlign: 'center' }}>
-            {emptyLabel ?? 'Nada por aqui ainda.'}
+            {emptyLabel ?? 'Nada publicado ainda.'}
           </AppText>
         </View>
       )}

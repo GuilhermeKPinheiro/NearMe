@@ -12,7 +12,6 @@ import { toOwnProfile, toPublicUser } from '../../common/auth-response';
 import { AuthProvider } from '../../generated/prisma/enums';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
-import { ProfilesService } from '../profiles/profiles.service';
 import type { GoogleLoginDto } from './dto/google-login.dto';
 import type { LoginDto } from './dto/login.dto';
 import type { RegisterDto } from './dto/register.dto';
@@ -25,7 +24,6 @@ export class AuthService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly profilesService: ProfilesService,
     private readonly emailService: EmailService,
   ) {}
 
@@ -77,16 +75,6 @@ export class AuthService {
         profile: true,
       },
     });
-
-    try {
-      await this.profilesService.ensureDemoNetworkForUser(user.id);
-    } catch (error) {
-      throw new InternalServerErrorException(
-        `Falha ao preparar a conta apos o cadastro: ${
-          error instanceof Error ? error.message : 'erro desconhecido'
-        }`,
-      );
-    }
 
     const verification = this.issueToken();
     await this.prisma.emailVerificationToken.deleteMany({
@@ -200,7 +188,6 @@ export class AuthService {
         include: { profile: true },
       });
 
-      await this.profilesService.ensureDemoNetworkForUser(user.id);
     } else {
       user = await this.prisma.user.update({
         where: { id: user.id },

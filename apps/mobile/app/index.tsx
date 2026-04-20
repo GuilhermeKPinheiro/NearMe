@@ -13,7 +13,7 @@ export default function Index() {
       <Screen>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 }}>
           <NearMeLogo />
-          <AppText variant="bodyMuted">Preparando quem esta por perto...</AppText>
+          <AppText variant="bodyMuted">Preparando quem está por perto...</AppText>
         </View>
       </Screen>
     );

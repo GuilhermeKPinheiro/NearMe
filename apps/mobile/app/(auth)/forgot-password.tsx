@@ -34,7 +34,7 @@ export default function ForgotPasswordScreen() {
         {error ? <AppText variant="bodyMuted">{error}</AppText> : null}
         {message ? <AppText variant="bodyMuted">{message}</AppText> : null}
         <PrimaryButton
-          title={isSubmitting ? 'Enviando...' : 'Enviar link'}
+          title={isSubmitting ? 'Enviando…' : 'Enviar link'}
           disabled={isSubmitting}
           onPress={async () => {
             try {

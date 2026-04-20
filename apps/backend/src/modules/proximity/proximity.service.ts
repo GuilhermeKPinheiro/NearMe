@@ -27,6 +27,13 @@ export class ProximityService {
         userId: {
           not: userId,
         },
+        user: {
+          email: {
+            not: {
+              endsWith: '@nearme.app',
+            },
+          },
+        },
         ...(sameVenueOnly && myActiveSession?.venueId ? { venueId: myActiveSession.venueId } : {}),
       },
       orderBy: {
