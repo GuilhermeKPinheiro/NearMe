@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { cacheKeys } from '../../common/cache-keys';
 import { NotificationType } from '../../generated/prisma/enums';
 import { Prisma } from '../../generated/prisma/client';
+import { RuntimeCacheService } from '../../common/runtime-cache.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 
@@ -46,15 +48,17 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtimeService: RealtimeService,
+    private readonly runtimeCache: RuntimeCacheService,
   ) {}
 
   async list(userId: string) {
-    return {
+    return this.runtimeCache.getOrSet(cacheKeys.notificationsList(userId), 5_000, async () => ({
       notifications: await this.prisma.notification.findMany({
         where: { userId },
         orderBy: { createdAt: 'desc' },
+        take: 30,
       }),
-    };
+    }));
   }
 
   async markAllAsRead(userId: string) {
@@ -68,6 +72,7 @@ export class NotificationsService {
       },
     });
 
+    this.runtimeCache.invalidate(cacheKeys.notificationsList(userId));
     this.realtimeService.publishNotificationsUpdated(userId, 'SYNC');
 
     return { success: true };
@@ -131,6 +136,7 @@ export class NotificationsService {
       },
     });
 
+    this.runtimeCache.invalidate(cacheKeys.notificationsList(input.userId));
     this.realtimeService.publishNotificationsUpdated(input.userId, input.realtimeReason);
     this.preparePushDelivery(notification.id, input);
 

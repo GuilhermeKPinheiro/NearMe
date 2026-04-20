@@ -1,22 +1,29 @@
 import { Injectable } from '@nestjs/common';
+import { cacheKeys } from '../../common/cache-keys';
 import { Prisma } from '../../generated/prisma/client';
 import { AuthProvider, ConnectionRequestStatus, VisibilitySource } from '../../generated/prisma/enums';
+import { RuntimeCacheService } from '../../common/runtime-cache.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { toOwnProfile } from '../../common/auth-response';
 import type { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
 export class ProfilesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly runtimeCache: RuntimeCacheService,
+  ) {}
 
   async getMe(userId: string) {
-    const profile = await this.prisma.profile.findUnique({
-      where: { userId },
-    });
+    return this.runtimeCache.getOrSet(cacheKeys.profileMe(userId), 10_000, async () => {
+      const profile = await this.prisma.profile.findUnique({
+        where: { userId },
+      });
 
-    return {
-      profile: toOwnProfile(profile),
-    };
+      return {
+        profile: toOwnProfile(profile),
+      };
+    });
   }
 
   async updateMe(userId: string, dto: UpdateProfileDto) {
@@ -65,6 +72,10 @@ export class ProfilesService {
       create: createData,
       update: updateData,
     });
+
+    this.runtimeCache.invalidate(cacheKeys.profileMe(userId));
+    this.runtimeCache.invalidatePrefix(cacheKeys.nearbyPrefix(userId));
+    this.runtimeCache.invalidatePrefix('nearby:list:');
 
     return {
       profile: toOwnProfile(profile),

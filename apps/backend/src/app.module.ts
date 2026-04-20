@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { join } from 'path';
 import { validateEnv } from './config/env.validation';
+import { RuntimeCacheModule } from './common/runtime-cache.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -29,6 +30,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
       ],
       validate: validateEnv,
     }),
+    RuntimeCacheModule,
     PrismaModule,
     AuthModule,
     UsersModule,

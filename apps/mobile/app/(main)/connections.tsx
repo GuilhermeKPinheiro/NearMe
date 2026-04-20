@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Linking, Modal, Pressable, View } from 'react-native';
+import { AppState, Linking, Modal, Pressable, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '@/components/screen';
@@ -205,14 +205,26 @@ export default function ConnectionsScreen() {
 
       const refresh = async () => {
         try {
-          await load();
+          const [nextState, nextNotifications] = await Promise.all([listConnectionState(), listNotifications()]);
 
           if (!active) {
             return;
           }
 
-          await markNotificationsAsRead();
-          setNotifications((current) => current.map((item) => ({ ...item, readAt: item.readAt ?? new Date().toISOString() })));
+          setState(normalizeConnectionState(nextState));
+          setNotifications(nextNotifications);
+
+          if (nextNotifications.some((item) => !item.readAt)) {
+            await markNotificationsAsRead();
+
+            if (!active) {
+              return;
+            }
+
+            setNotifications((current) =>
+              current.map((item) => ({ ...item, readAt: item.readAt ?? new Date().toISOString() }))
+            );
+          }
         } catch (nextError) {
           if (active) {
             setError(getErrorMessage(nextError));
@@ -221,21 +233,23 @@ export default function ConnectionsScreen() {
       };
 
       void refresh();
-      const interval = setInterval(() => {
-        void refresh();
-      }, 15000);
       const unsubscribeConnections = realtimeClient.subscribe('connections:updated', () => {
         void refresh();
       });
       const unsubscribeNotifications = realtimeClient.subscribe('notifications:updated', () => {
         void refresh();
       });
+      const appStateSubscription = AppState.addEventListener('change', (state) => {
+        if (state === 'active') {
+          void refresh();
+        }
+      });
 
       return () => {
         active = false;
-        clearInterval(interval);
         unsubscribeConnections();
         unsubscribeNotifications();
+        appStateSubscription.remove();
       };
     }, [load])
   );

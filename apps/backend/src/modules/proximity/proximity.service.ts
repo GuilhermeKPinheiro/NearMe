@@ -1,100 +1,103 @@
 import { Injectable } from '@nestjs/common';
+import { cacheKeys } from '../../common/cache-keys';
 import { ConnectionRequestStatus } from '../../generated/prisma/enums';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getActiveStoryUrls } from '../../common/story-media';
 import { getVisibilityFreshCutoff } from '../../common/visibility-session';
+import { RuntimeCacheService } from '../../common/runtime-cache.service';
 import { haversineDistanceMeters } from '../venues/venue-utils';
 
 @Injectable()
 export class ProximityService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly runtimeCache: RuntimeCacheService,
+  ) {}
 
   async listNearbyUsers(userId: string, radiusMeters = 1000, sameVenueOnly = false) {
     const safeRadiusMeters = Number.isFinite(radiusMeters) ? Math.min(Math.max(radiusMeters, 100), 10000) : 1000;
-    const freshCutoff = getVisibilityFreshCutoff();
-    const myActiveSession = await this.prisma.visibilitySession.findFirst({
-      where: {
-        userId,
-        isActive: true,
-        updatedAt: {
-          gte: freshCutoff,
-        },
-      },
-      orderBy: {
-        startedAt: 'desc',
-      },
-      include: {
-        venue: true,
-      },
-    });
-    const visibleUsers = await this.prisma.visibilitySession.findMany({
-      where: {
-        isActive: true,
-        updatedAt: {
-          gte: freshCutoff,
-        },
-        userId: {
-          not: userId,
-        },
-        user: {
-          email: {
-            not: {
-              endsWith: '@nearme.app',
+    return this.runtimeCache.getOrSet(
+      cacheKeys.nearbyList(userId, safeRadiusMeters, sameVenueOnly),
+      5_000,
+      async () => {
+        const freshCutoff = getVisibilityFreshCutoff();
+        const myActiveSession = await this.prisma.visibilitySession.findFirst({
+          where: {
+            userId,
+            isActive: true,
+            updatedAt: {
+              gte: freshCutoff,
             },
           },
-        },
-        ...(sameVenueOnly && myActiveSession?.venueId ? { venueId: myActiveSession.venueId } : {}),
-      },
-      orderBy: {
-        startedAt: 'desc',
-      },
-      include: {
-        user: {
-          include: {
-            profile: true,
+          orderBy: {
+            startedAt: 'desc',
           },
-        },
-        venue: true,
-      },
-    });
+          include: {
+            venue: true,
+          },
+        });
+        const visibleUsers = await this.prisma.visibilitySession.findMany({
+          where: {
+            isActive: true,
+            updatedAt: {
+              gte: freshCutoff,
+            },
+            userId: {
+              not: userId,
+            },
+            user: {
+              email: {
+                not: {
+                  endsWith: '@nearme.app',
+                },
+              },
+            },
+            ...(sameVenueOnly && myActiveSession?.venueId ? { venueId: myActiveSession.venueId } : {}),
+          },
+          orderBy: {
+            startedAt: 'desc',
+          },
+          include: {
+            user: {
+              include: {
+                profile: true,
+              },
+            },
+            venue: true,
+          },
+        });
 
-    const requests = await this.prisma.connectionRequest.findMany({
-      where: {
-        OR: [
-          { fromUserId: userId },
-          { toUserId: userId },
-        ],
-      },
-    });
+        const [requests, connections, blockedRelations] = await Promise.all([
+          this.prisma.connectionRequest.findMany({
+            where: {
+              OR: [{ fromUserId: userId }, { toUserId: userId }],
+            },
+          }),
+          this.prisma.connection.findMany({
+            where: {
+              OR: [{ userAId: userId }, { userBId: userId }],
+            },
+          }),
+          this.prisma.blockedUser.findMany({
+            where: {
+              OR: [{ blockerId: userId }, { blockedId: userId }],
+            },
+          }),
+        ]);
 
-    const connections = await this.prisma.connection.findMany({
-      where: {
-        OR: [
-          { userAId: userId },
-          { userBId: userId },
-        ],
-      },
-    });
+        const blockedUserIds = new Set(
+          blockedRelations.map((item) => (item.blockerId === userId ? item.blockedId : item.blockerId)),
+        );
 
-    const blockedRelations = await this.prisma.blockedUser.findMany({
-      where: {
-        OR: [{ blockerId: userId }, { blockedId: userId }],
-      },
-    });
+        const myCoordinates =
+          myActiveSession?.latitude != null && myActiveSession.longitude != null
+            ? {
+                latitude: myActiveSession.latitude,
+                longitude: myActiveSession.longitude,
+              }
+            : null;
 
-    const blockedUserIds = new Set(
-      blockedRelations.map((item) => (item.blockerId === userId ? item.blockedId : item.blockerId)),
-    );
-
-    const myCoordinates =
-      myActiveSession?.latitude != null && myActiveSession.longitude != null
-        ? {
-            latitude: myActiveSession.latitude,
-            longitude: myActiveSession.longitude,
-          }
-        : null;
-
-    const users = visibleUsers.map((session, index) => {
+        const users = visibleUsers.map((session, index) => {
         const hasPeerCoordinates = session.latitude != null && session.longitude != null;
         const exactDistanceMeters =
           myCoordinates && hasPeerCoordinates
@@ -180,24 +183,26 @@ export class ProximityService {
             : null,
         };
       })
-      .filter((user) => user.distanceMeters <= safeRadiusMeters && !blockedUserIds.has(user.id))
-      .sort((first, second) => first.distanceMeters - second.distanceMeters);
+          .filter((user) => user.distanceMeters <= safeRadiusMeters && !blockedUserIds.has(user.id))
+          .sort((first, second) => first.distanceMeters - second.distanceMeters);
 
-    return {
-      users,
-      summary: {
-        count: users.length,
-        sameVenueOnly,
-        venue: myActiveSession?.venueId
-          ? {
-              id: myActiveSession.venueId,
-              name: myActiveSession.venue?.name ?? null,
-            }
-          : null,
-        pendingReceived: requests.filter(
-          (request) => request.toUserId === userId && request.status === ConnectionRequestStatus.PENDING,
-        ).length,
+        return {
+          users,
+          summary: {
+            count: users.length,
+            sameVenueOnly,
+            venue: myActiveSession?.venueId
+              ? {
+                  id: myActiveSession.venueId,
+                  name: myActiveSession.venue?.name ?? null,
+                }
+              : null,
+            pendingReceived: requests.filter(
+              (request) => request.toUserId === userId && request.status === ConnectionRequestStatus.PENDING,
+            ).length,
+          },
+        };
       },
-    };
+    );
   }
 }

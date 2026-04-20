@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { cacheKeys } from '../../common/cache-keys';
 import { VisibilitySource } from '../../generated/prisma/enums';
+import { RuntimeCacheService } from '../../common/runtime-cache.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { UpdateLocationDto } from './dto/update-location.dto';
 import { VenuesService } from '../venues/venues.service';
@@ -10,7 +12,14 @@ export class VisibilityService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly venuesService: VenuesService,
+    private readonly runtimeCache: RuntimeCacheService,
   ) {}
+
+  private invalidateVisibilityCaches(userId: string) {
+    this.runtimeCache.invalidate(cacheKeys.visibilityStatus(userId));
+    this.runtimeCache.invalidatePrefix(cacheKeys.nearbyPrefix(userId));
+    this.runtimeCache.invalidatePrefix('nearby:list:');
+  }
 
   private async resolveVenueId(location?: UpdateLocationDto) {
     if (!location) {
@@ -48,6 +57,8 @@ export class VisibilityService {
       },
     });
 
+    this.invalidateVisibilityCaches(userId);
+
     return {
       isVisible: true,
       session,
@@ -65,6 +76,8 @@ export class VisibilityService {
         endedAt: new Date(),
       },
     });
+
+    this.invalidateVisibilityCaches(userId);
 
     return {
       isVisible: false,
@@ -103,6 +116,8 @@ export class VisibilityService {
       },
     });
 
+    this.invalidateVisibilityCaches(userId);
+
     return {
       isVisible: true,
       session,
@@ -110,27 +125,29 @@ export class VisibilityService {
   }
 
   async status(userId: string) {
-    const freshCutoff = getVisibilityFreshCutoff();
-    const activeSession = await this.prisma.visibilitySession.findFirst({
-      where: {
-        userId,
-        isActive: true,
-        updatedAt: {
-          gte: freshCutoff,
+    return this.runtimeCache.getOrSet(cacheKeys.visibilityStatus(userId), 3_000, async () => {
+      const freshCutoff = getVisibilityFreshCutoff();
+      const activeSession = await this.prisma.visibilitySession.findFirst({
+        where: {
+          userId,
+          isActive: true,
+          updatedAt: {
+            gte: freshCutoff,
+          },
         },
-      },
-      orderBy: {
-        startedAt: 'desc',
-      },
-      include: {
-        venue: true,
-      },
-    });
+        orderBy: {
+          startedAt: 'desc',
+        },
+        include: {
+          venue: true,
+        },
+      });
 
-    return {
-      isVisible: Boolean(activeSession),
-      session: activeSession,
-    };
+      return {
+        isVisible: Boolean(activeSession),
+        session: activeSession,
+      };
+    });
   }
 
   async updateLocation(userId: string, location: UpdateLocationDto) {
@@ -171,6 +188,8 @@ export class VisibilityService {
         venue: true,
       },
     });
+
+    this.invalidateVisibilityCaches(userId);
 
     return {
       isVisible: true,

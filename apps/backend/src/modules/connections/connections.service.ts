@@ -3,8 +3,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { cacheKeys } from '../../common/cache-keys';
 import { ConnectionRequestStatus, NotificationType } from '../../generated/prisma/enums';
 import { getActiveStoryUrls } from '../../common/story-media';
+import { RuntimeCacheService } from '../../common/runtime-cache.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -19,7 +21,16 @@ export class ConnectionsService {
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
     private readonly realtimeService: RealtimeService,
+    private readonly runtimeCache: RuntimeCacheService,
   ) {}
+
+  private invalidateUserCaches(userIds: string[]) {
+    for (const userId of new Set(userIds)) {
+      this.runtimeCache.invalidate(cacheKeys.connectionsList(userId));
+      this.runtimeCache.invalidatePrefix(cacheKeys.nearbyPrefix(userId));
+      this.runtimeCache.invalidate(cacheKeys.notificationsList(userId));
+    }
+  }
 
   async createRequest(fromUserId: string, toUserId: string) {
     if (fromUserId === toUserId) {
@@ -77,6 +88,7 @@ export class ConnectionsService {
 
     this.realtimeService.publishConnectionsUpdated(fromUserId, 'REQUEST_CREATED');
     this.realtimeService.publishConnectionsUpdated(toUserId, 'REQUEST_CREATED');
+    this.invalidateUserCaches([fromUserId, toUserId]);
 
     return { request };
   }
@@ -128,6 +140,7 @@ export class ConnectionsService {
 
     this.realtimeService.publishConnectionsUpdated(request.fromUserId, 'REQUEST_ACCEPTED');
     this.realtimeService.publishConnectionsUpdated(request.toUserId, 'REQUEST_ACCEPTED');
+    this.invalidateUserCaches([request.fromUserId, request.toUserId]);
 
     return { request: updatedRequest };
   }
@@ -151,6 +164,7 @@ export class ConnectionsService {
 
     this.realtimeService.publishConnectionsUpdated(request.fromUserId, 'REQUEST_REJECTED');
     this.realtimeService.publishConnectionsUpdated(request.toUserId, 'REQUEST_REJECTED');
+    this.invalidateUserCaches([request.fromUserId, request.toUserId]);
 
     return { request: updatedRequest };
   }
@@ -170,6 +184,7 @@ export class ConnectionsService {
 
     this.realtimeService.publishConnectionsUpdated(connection.userAId, 'SYNC');
     this.realtimeService.publishConnectionsUpdated(connection.userBId, 'SYNC');
+    this.invalidateUserCaches([connection.userAId, connection.userBId]);
 
     return { success: true };
   }
@@ -210,12 +225,14 @@ export class ConnectionsService {
 
     this.realtimeService.publishConnectionsUpdated(userId, 'SYNC');
     this.realtimeService.publishConnectionsUpdated(targetUserId, 'SYNC');
+    this.invalidateUserCaches([userId, targetUserId]);
 
     return { success: true };
   }
 
   async listForUser(userId: string) {
-    const [received, sent, connections, blockedRelations] = await Promise.all([
+    return this.runtimeCache.getOrSet(cacheKeys.connectionsList(userId), 5_000, async () => {
+      const [received, sent, connections, blockedRelations] = await Promise.all([
       this.prisma.connectionRequest.findMany({
         where: {
           toUserId: userId,
@@ -293,14 +310,14 @@ export class ConnectionsService {
           OR: [{ blockerId: userId }, { blockedId: userId }],
         },
       }),
-    ]);
+      ]);
 
-    const blockedUserIds = new Set(
-      blockedRelations.map((item) => (item.blockerId === userId ? item.blockedId : item.blockerId)),
-    );
+      const blockedUserIds = new Set(
+        blockedRelations.map((item) => (item.blockerId === userId ? item.blockedId : item.blockerId)),
+      );
 
-    return {
-      received: received
+      return {
+        received: received
         .filter((request) => !blockedUserIds.has(request.fromUser.id))
         .map((request) => ({
           id: request.id,
@@ -313,7 +330,7 @@ export class ConnectionsService {
             headline: request.fromUser.profile?.headline ?? '',
           },
         })),
-      sent: sent
+        sent: sent
         .filter((request) => !blockedUserIds.has(request.toUser.id))
         .map((request) => ({
           id: request.id,
@@ -326,7 +343,7 @@ export class ConnectionsService {
             headline: request.toUser.profile?.headline ?? '',
           },
         })),
-      connections: connections
+        connections: connections
         .filter((connection) => {
           const peerId = connection.userAId === userId ? connection.userBId : connection.userAId;
           return !blockedUserIds.has(peerId);
@@ -359,6 +376,7 @@ export class ConnectionsService {
           },
         };
       }),
-    };
+      };
+    });
   }
 }

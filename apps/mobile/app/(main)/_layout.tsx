@@ -1,4 +1,4 @@
-import { Tabs } from 'expo-router';
+import { Tabs, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
@@ -10,6 +10,8 @@ import { colors } from '@/theme/colors';
 export default function MainLayout() {
   const { isAuthenticated } = useSession();
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const pathname = usePathname();
+  const isConnectionsScreen = pathname?.includes('/connections');
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -35,10 +37,15 @@ export default function MainLayout() {
       }
     };
 
-    void refreshNotifications();
-    const interval = setInterval(() => {
+    if (!isConnectionsScreen) {
       void refreshNotifications();
-    }, 30000);
+    }
+
+    const interval = isConnectionsScreen
+      ? null
+      : setInterval(() => {
+          void refreshNotifications();
+        }, 30000);
 
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
@@ -51,11 +58,13 @@ export default function MainLayout() {
 
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      if (interval) {
+        clearInterval(interval);
+      }
       subscription.remove();
       unsubscribeRealtime();
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isConnectionsScreen]);
 
   return (
     <Tabs
