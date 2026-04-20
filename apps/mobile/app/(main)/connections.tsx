@@ -10,7 +10,13 @@ import { StoryAvatar } from '@/components/story-avatar';
 import { MediaStrip } from '@/components/media-strip';
 import { SectionHeader } from '@/components/section-header';
 import { SegmentedControl } from '@/components/segmented-control';
-import { acceptConnectionRequest, listConnectionState, rejectConnectionRequest } from '@/services/connections';
+import {
+  acceptConnectionRequest,
+  blockUser,
+  disconnectConnection,
+  listConnectionState,
+  rejectConnectionRequest,
+} from '@/services/connections';
 import { getErrorMessage } from '@/services/http';
 import { listNotifications, markNotificationsAsRead } from '@/services/notifications';
 import { realtimeClient } from '@/services/realtime';
@@ -63,9 +69,18 @@ function LinkLine({ label, url }: { label: string; url: string | null }) {
 type ConnectionDetailModalProps = {
   item: Connection | null;
   onClose: () => void;
+  onDisconnect: (item: Connection) => void;
+  onBlock: (item: Connection) => void;
+  pendingAction: 'disconnect' | 'block' | null;
 };
 
-function ConnectionDetailModal({ item, onClose }: ConnectionDetailModalProps) {
+function ConnectionDetailModal({
+  item,
+  onClose,
+  onDisconnect,
+  onBlock,
+  pendingAction,
+}: ConnectionDetailModalProps) {
   const privatePhotos = splitPhotos(item?.user.matchOnlyPhotoUrls ?? '');
   const privateStories = splitPhotos(item?.user.matchOnlyStoryPhotoUrls ?? '');
   const connectedLabel = item?.createdAt ? formatRelativeTime(item.createdAt) : null;
@@ -133,6 +148,30 @@ function ConnectionDetailModal({ item, onClose }: ConnectionDetailModalProps) {
                   <AppText variant="bodyMuted">Essa conexão ainda não liberou links diretos.</AppText>
                 ) : null}
               </Card>
+
+              <Card tone="soft">
+                <AppText variant="sectionTitle">Controle da conexão</AppText>
+                <AppText variant="bodyMuted">
+                  Você pode encerrar essa conexão ou bloquear essa pessoa para ela não aparecer mais no seu radar.
+                </AppText>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <SecondaryButton
+                      title={pendingAction === 'disconnect' ? 'Desconectando...' : 'Desconectar'}
+                      disabled={pendingAction !== null}
+                      onPress={() => onDisconnect(item)}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <SecondaryButton
+                      title={pendingAction === 'block' ? 'Bloqueando...' : 'Bloquear'}
+                      disabled={pendingAction !== null}
+                      style={{ borderColor: colors.danger }}
+                      onPress={() => onBlock(item)}
+                    />
+                  </View>
+                </View>
+              </Card>
             </>
           ) : null}
         </View>
@@ -151,6 +190,7 @@ export default function ConnectionsScreen() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [selectedTab, setSelectedTab] = useState<TabValue>('connections');
   const [selectedConnection, setSelectedConnection] = useState<Connection | null>(null);
+  const [pendingDetailAction, setPendingDetailAction] = useState<'disconnect' | 'block' | null>(null);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
@@ -360,7 +400,36 @@ export default function ConnectionsScreen() {
         ) : null}
       </View>
 
-      <ConnectionDetailModal item={selectedConnection} onClose={() => setSelectedConnection(null)} />
+      <ConnectionDetailModal
+        item={selectedConnection}
+        onClose={() => {
+          setSelectedConnection(null);
+          setPendingDetailAction(null);
+        }}
+        pendingAction={pendingDetailAction}
+        onDisconnect={(item) => {
+          setPendingDetailAction('disconnect');
+          disconnectConnection(item.id)
+            .then(async () => {
+              await load();
+              await refreshDashboard();
+              setSelectedConnection(null);
+            })
+            .catch((nextError) => setError(getErrorMessage(nextError)))
+            .finally(() => setPendingDetailAction(null));
+        }}
+        onBlock={(item) => {
+          setPendingDetailAction('block');
+          blockUser(item.user.id)
+            .then(async () => {
+              await load();
+              await refreshDashboard();
+              setSelectedConnection(null);
+            })
+            .catch((nextError) => setError(getErrorMessage(nextError)))
+            .finally(() => setPendingDetailAction(null));
+        }}
+      />
     </Screen>
   );
 }

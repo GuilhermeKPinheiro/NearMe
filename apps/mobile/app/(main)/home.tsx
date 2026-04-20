@@ -83,9 +83,10 @@ export default function HomeScreen() {
   const activeStories = storyTab === 'public' ? publicStories : privateStories;
   const hasActiveStory = activeStories.length > 0;
   const storySubtitle = useMemo(() => {
-    const relative = formatRelativeTime(profile?.updatedAt);
+    const publishedAt = storyTab === 'public' ? profile?.storyPublishedAt : profile?.matchOnlyStoryPublishedAt;
+    const relative = formatRelativeTime(publishedAt);
     return relative ? `Publicado ${relative}` : 'Momento publicado';
-  }, [profile?.updatedAt]);
+  }, [profile?.matchOnlyStoryPublishedAt, profile?.storyPublishedAt, storyTab]);
 
   const locationLabel = useMemo(() => {
     if (activeVenue) {
@@ -118,8 +119,10 @@ export default function HomeScreen() {
           storyPhotoUrls:
             audience === 'public' ? [draft.storyPhotoUrls, uploadedUrl].filter(Boolean).join('\n') : draft.storyPhotoUrls,
           matchOnlyStoryPhotoUrls:
-            audience === 'match' ? [draft.matchOnlyStoryPhotoUrls, uploadedUrl].filter(Boolean).join('\n') : draft.matchOnlyStoryPhotoUrls,
-        })
+            audience === 'match'
+              ? [draft.matchOnlyStoryPhotoUrls, uploadedUrl].filter(Boolean).join('\n')
+              : draft.matchOnlyStoryPhotoUrls,
+        }),
       );
     } finally {
       setIsUploadingStory(false);
@@ -175,7 +178,7 @@ export default function HomeScreen() {
       void refreshDashboard().catch(() => undefined);
       void listActiveVenues().then(setVenues).catch(() => undefined);
       return () => undefined;
-    }, [refreshDashboard])
+    }, [refreshDashboard]),
   );
 
   return (
@@ -211,6 +214,7 @@ export default function HomeScreen() {
             <View style={{ flex: 1, gap: 6 }}>
               <AppText variant="eyebrow">{storyTab === 'public' ? 'Momento aberto' : 'Momento reservado'}</AppText>
               <AppText variant="sectionTitle">{hasActiveStory ? 'Seu momento já está no ar.' : 'Publique algo do agora.'}</AppText>
+              {hasActiveStory ? <AppText variant="bodyMuted">{storySubtitle}</AppText> : null}
             </View>
             <PrimaryButton
               title="+"
@@ -361,8 +365,8 @@ export default function HomeScreen() {
             <Card tone="soft" style={{ padding: 16, minHeight: 136, justifyContent: 'space-between' }}>
               <View style={{ gap: 4 }}>
                 <AppText variant="eyebrow">Conexões</AppText>
-                <AppText variant="sectionTitle">Abra sua rede</AppText>
-                <AppText variant="bodyMuted">Leve a conexão para suas redes no momento certo.</AppText>
+                <AppText variant="sectionTitle">Sua rede no app</AppText>
+                <AppText variant="bodyMuted">Acompanhe pedidos, conexões ativas e o que já foi liberado.</AppText>
               </View>
               <SecondaryButton title="Ver conexões" compact onPress={() => router.push('/connections')} />
             </Card>

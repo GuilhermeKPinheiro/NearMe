@@ -20,3 +20,13 @@ export async function rejectConnectionRequest(id: string) {
   const { data } = await http.post<{ request: { id: string } }>(`/api/connections/${id}/reject`);
   return data;
 }
+
+export async function disconnectConnection(id: string) {
+  const { data } = await http.post<{ success: boolean }>(`/api/connections/${id}/disconnect`);
+  return data;
+}
+
+export async function blockUser(targetUserId: string) {
+  const { data } = await http.post<{ success: boolean }>(`/api/connections/block/${targetUserId}`);
+  return data;
+}

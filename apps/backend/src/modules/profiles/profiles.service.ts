@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '../../generated/prisma/client';
 import { AuthProvider, ConnectionRequestStatus, VisibilitySource } from '../../generated/prisma/enums';
 import { PrismaService } from '../../prisma/prisma.service';
 import { toOwnProfile } from '../../common/auth-response';
@@ -19,13 +20,50 @@ export class ProfilesService {
   }
 
   async updateMe(userId: string, dto: UpdateProfileDto) {
+    const currentProfile = await this.prisma.profile.findUnique({
+      where: { userId },
+    });
+    const currentProfileWithStoryTimestamps = currentProfile as
+      | (typeof currentProfile & {
+          storyPublishedAt?: Date | null;
+          matchOnlyStoryPublishedAt?: Date | null;
+        })
+      | null;
+    const now = new Date();
+    const nextStoryUrls = dto.storyPhotoUrls?.trim() ?? '';
+    const nextMatchStoryUrls = dto.matchOnlyStoryPhotoUrls?.trim() ?? '';
+    const currentStoryUrls = currentProfile?.storyPhotoUrls?.trim() ?? '';
+    const currentMatchStoryUrls = currentProfile?.matchOnlyStoryPhotoUrls?.trim() ?? '';
+
+    const createData = {
+      userId,
+      ...dto,
+      storyPhotoUrls: nextStoryUrls || null,
+      matchOnlyStoryPhotoUrls: nextMatchStoryUrls || null,
+      storyPublishedAt: nextStoryUrls ? now : null,
+      matchOnlyStoryPublishedAt: nextMatchStoryUrls ? now : null,
+    } as Prisma.ProfileUncheckedCreateInput;
+
+    const updateData = {
+      ...dto,
+      storyPhotoUrls: nextStoryUrls || null,
+      matchOnlyStoryPhotoUrls: nextMatchStoryUrls || null,
+      storyPublishedAt: !nextStoryUrls
+        ? null
+        : nextStoryUrls !== currentStoryUrls
+          ? now
+          : currentProfileWithStoryTimestamps?.storyPublishedAt ?? currentProfile?.updatedAt ?? now,
+      matchOnlyStoryPublishedAt: !nextMatchStoryUrls
+        ? null
+        : nextMatchStoryUrls !== currentMatchStoryUrls
+          ? now
+          : currentProfileWithStoryTimestamps?.matchOnlyStoryPublishedAt ?? currentProfile?.updatedAt ?? now,
+    } as Prisma.ProfileUncheckedUpdateInput;
+
     const profile = await this.prisma.profile.upsert({
       where: { userId },
-      create: {
-        userId,
-        ...dto,
-      },
-      update: dto,
+      create: createData,
+      update: updateData,
     });
 
     return {

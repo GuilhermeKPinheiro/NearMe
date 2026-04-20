@@ -63,6 +63,10 @@ function splitMedia(value: string) {
     .filter(Boolean);
 }
 
+function removeMedia(value: string, target: string) {
+  return splitMedia(value).filter((item) => item !== target).join('\n');
+}
+
 function PrivacyToggle({
   title,
   description,
@@ -229,9 +233,10 @@ export default function ProfileScreen() {
   const activeStories = audienceTab === 'public' ? publicStories : privateStories;
   const profileCompleteness = [draft.displayName, draft.headline, draft.bio, draft.city, draft.photoUrl].filter(Boolean).length;
   const storySubtitle = useMemo(() => {
-    const relative = formatRelativeTime(profile?.updatedAt);
+    const publishedAt = audienceTab === 'public' ? profile?.storyPublishedAt : profile?.matchOnlyStoryPublishedAt;
+    const relative = formatRelativeTime(publishedAt);
     return relative ? `Publicado ${relative}` : 'Momento publicado';
-  }, [profile?.updatedAt]);
+  }, [audienceTab, profile?.matchOnlyStoryPublishedAt, profile?.storyPublishedAt]);
 
   const applyUploadedMedia = async (uri: string, target: MediaTarget) => {
     setIsUploadingMedia(true);
@@ -263,7 +268,7 @@ export default function ProfileScreen() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permission.granted) {
-      setMessage('Permita acesso as fotos para usar a galeria.');
+      setMessage('Permita acesso às fotos para usar a galeria.');
       return;
     }
 
@@ -291,7 +296,7 @@ export default function ProfileScreen() {
     const permissionResponse = cameraPermission?.granted ? cameraPermission : await requestCameraPermission();
 
     if (!permissionResponse?.granted) {
-      setMessage('Permita acesso a camera para tirar uma foto agora.');
+      setMessage('Permita acesso à câmera para tirar uma foto agora.');
       return;
     }
 
@@ -411,7 +416,7 @@ export default function ProfileScreen() {
 
         <Card style={{ padding: 18 }}>
           <View style={{ gap: 6 }}>
-            <AppText variant="eyebrow">Cartao</AppText>
+            <AppText variant="eyebrow">Cartão</AppText>
             <AppText variant="sectionTitle">O que as pessoas entendem de você em poucos segundos.</AppText>
           </View>
           <Input
@@ -459,6 +464,7 @@ export default function ProfileScreen() {
           <View style={{ gap: 6 }}>
             <AppText variant="eyebrow">Vitrine</AppText>
             <AppText variant="sectionTitle">Escolha a camada e publique.</AppText>
+            <AppText variant="bodyMuted">Aqui você controla o que todo mundo vê primeiro e o que só entra depois do aceite.</AppText>
           </View>
 
           <SegmentedControl
@@ -490,30 +496,32 @@ export default function ProfileScreen() {
               <AppText variant="sectionTitle">
                 {activeLayer.currentItems.length > 0 ? `${activeLayer.currentItems.length} itens` : 'Nada publicado ainda'}
               </AppText>
+              <AppText variant="bodyMuted">{activeLayer.description}</AppText>
             </View>
 
-            {mediaTab === 'story' ? (
-              <View style={{ flexDirection: 'row', gap: 18, alignItems: 'center' }}>
-                <StoryAvatar
-                  uri={draft.photoUrl}
-                  name={draft.displayName}
-                  size={86}
-                  active={activeLayer.currentItems.length > 0}
-                  label={activeLayer.currentItems.length > 0 ? 'Abrir' : 'Publicar'}
-                  onPress={activeLayer.currentItems.length > 0 ? () => setStoryViewerOpen(true) : () => setSourceTarget(activeLayer)}
-                />
-                <View style={{ flex: 1, gap: 4 }}>
-                  <AppText variant="sectionTitle">{audienceTab === 'public' ? 'Seu momento aberto' : 'Seu momento reservado'}</AppText>
-                  <AppText variant="bodyMuted">
-                    {activeLayer.currentItems.length > 0 ? 'Toque no avatar para rever.' : 'Use câmera ou galeria para publicar.'}
-                  </AppText>
-                </View>
-              </View>
-            ) : (
-              <MediaStrip title="Previa" items={activeLayer.currentItems.slice(0, 6)} emptyLabel="Nada publicado ainda." />
-            )}
+            <MediaStrip
+              title={mediaTab === 'story' ? 'Momentos publicados' : 'Fotos publicadas'}
+              items={activeLayer.currentItems.slice(0, 12)}
+              tall={mediaTab === 'story'}
+              emptyLabel={mediaTab === 'story' ? 'Nada publicado agora.' : 'Nenhuma foto adicionada ainda.'}
+              onRemoveItem={(item) =>
+                updateDraft((current) => ({
+                  ...current,
+                  [activeLayer.field]: removeMedia(current[activeLayer.field], item),
+                }))
+              }
+            />
 
-            <PrimaryButton title={mediaTab === 'story' ? 'Publicar momento' : 'Adicionar foto'} onPress={() => setSourceTarget(activeLayer)} />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {mediaTab === 'story' && activeLayer.currentItems.length > 0 ? (
+                <View style={{ flex: 1 }}>
+                  <SecondaryButton title="Ver momento" onPress={() => setStoryViewerOpen(true)} />
+                </View>
+              ) : null}
+              <View style={{ flex: 1 }}>
+                <PrimaryButton title={mediaTab === 'story' ? 'Publicar momento' : 'Adicionar foto'} onPress={() => setSourceTarget(activeLayer)} />
+              </View>
+            </View>
           </Card>
         </Card>
 
@@ -574,7 +582,7 @@ export default function ProfileScreen() {
             <View style={{ flex: 1 }}>
               <Input
                 label="Outro link"
-                placeholder="Site, portfolio ou outro link"
+                placeholder="Site, portfólio ou outro link"
                 keyboardType="url"
                 autoCapitalize="none"
                 autoComplete="off"
@@ -615,7 +623,7 @@ export default function ProfileScreen() {
 
         <Card style={{ padding: 18 }}>
           <View style={{ gap: 6 }}>
-            <AppText variant="eyebrow">Presenca</AppText>
+            <AppText variant="eyebrow">Presença</AppText>
             <AppText variant="sectionTitle">Raio padrão quando você entra no radar.</AppText>
             <AppText variant="bodyMuted">Você controla alcance e contexto sem expor a sua posição exata.</AppText>
           </View>
@@ -625,7 +633,7 @@ export default function ProfileScreen() {
             onChange={(value) => updateDraft((current) => ({ ...current, preferredRadiusMeters: value }))}
           />
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            <TagChip label="Presenca intencional" />
+            <TagChip label="Presença intencional" />
             <TagChip label="Descoberta por proximidade" />
             <TagChip label="Privacidade antes do aceite" />
           </View>
@@ -652,8 +660,8 @@ export default function ProfileScreen() {
 
       <MediaSourceSheet
         visible={Boolean(sourceTarget)}
-        title={sourceTarget?.title ?? 'Midia'}
-        description={sourceTarget?.description ?? 'Escolha a origem da sua midia.'}
+        title={sourceTarget?.title ?? 'Mídia'}
+        description={sourceTarget?.description ?? 'Escolha a origem da sua mídia.'}
         onClose={() => setSourceTarget(null)}
         onPickCamera={() => {
           const target = sourceTarget;
@@ -679,7 +687,7 @@ export default function ProfileScreen() {
 
       <CameraCaptureModal
         visible={Boolean(cameraTarget)}
-        title={cameraTarget?.title ?? 'Camera'}
+        title={cameraTarget?.title ?? 'Câmera'}
         description={cameraTarget?.description ?? 'Capture a imagem do momento.'}
         aspectLabel={cameraTarget?.aspectLabel ?? '1:1 retrato'}
         uploading={isUploadingMedia}

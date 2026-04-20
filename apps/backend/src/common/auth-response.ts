@@ -1,4 +1,10 @@
 import type { Profile, User } from '../generated/prisma/client';
+import { getActiveStoryPublishedAt, getActiveStoryUrls } from './story-media';
+
+type ProfileWithStoryTimestamps = Profile & {
+  storyPublishedAt?: Date | null;
+  matchOnlyStoryPublishedAt?: Date | null;
+};
 
 export function toPublicUser(user: User) {
   return {
@@ -13,6 +19,19 @@ export function toOwnProfile(profile: Profile | null) {
   if (!profile) {
     return null;
   }
+
+  const nextProfile = profile as ProfileWithStoryTimestamps;
+
+  const storyPhotoUrls = getActiveStoryUrls({
+    urls: nextProfile.storyPhotoUrls,
+    publishedAt: nextProfile.storyPublishedAt,
+    fallbackUpdatedAt: nextProfile.updatedAt,
+  });
+  const matchOnlyStoryPhotoUrls = getActiveStoryUrls({
+    urls: nextProfile.matchOnlyStoryPhotoUrls,
+    publishedAt: nextProfile.matchOnlyStoryPublishedAt,
+    fallbackUpdatedAt: nextProfile.updatedAt,
+  });
 
   return {
     id: profile.id,
@@ -35,8 +54,18 @@ export function toOwnProfile(profile: Profile | null) {
     showSocialLinks: profile.showSocialLinks,
     publicPhotoUrls: profile.publicPhotoUrls,
     matchOnlyPhotoUrls: profile.matchOnlyPhotoUrls,
-    storyPhotoUrls: profile.storyPhotoUrls,
-    matchOnlyStoryPhotoUrls: profile.matchOnlyStoryPhotoUrls,
+    storyPhotoUrls,
+    matchOnlyStoryPhotoUrls,
+    storyPublishedAt: getActiveStoryPublishedAt({
+      urls: nextProfile.storyPhotoUrls,
+      publishedAt: nextProfile.storyPublishedAt,
+      fallbackUpdatedAt: nextProfile.updatedAt,
+    }),
+    matchOnlyStoryPublishedAt: getActiveStoryPublishedAt({
+      urls: nextProfile.matchOnlyStoryPhotoUrls,
+      publishedAt: nextProfile.matchOnlyStoryPublishedAt,
+      fallbackUpdatedAt: nextProfile.updatedAt,
+    }),
     preferredRadiusMeters: profile.preferredRadiusMeters,
     updatedAt: profile.updatedAt,
   };

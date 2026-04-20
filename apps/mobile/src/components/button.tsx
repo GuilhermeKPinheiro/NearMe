@@ -26,7 +26,7 @@ export function PrimaryButton({ title, compact = false, style, ...props }: Butto
       ]}
       {...props}
     >
-      <Text style={{ color: colors.background, fontWeight: '800', fontSize: 15 }}>{title}</Text>
+      <Text style={{ color: colors.background, fontWeight: '800', fontSize: 15, textAlign: 'center' }}>{title}</Text>
     </Pressable>
   );
 }
@@ -50,7 +50,7 @@ export function SecondaryButton({ title, compact = false, style, ...props }: But
       ]}
       {...props}
     >
-      <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15 }}>{title}</Text>
+      <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15, textAlign: 'center' }}>{title}</Text>
     </Pressable>
   );
 }

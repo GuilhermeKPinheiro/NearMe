@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConnectionRequestStatus } from '../../generated/prisma/enums';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getActiveStoryUrls } from '../../common/story-media';
+import { getVisibilityFreshCutoff } from '../../common/visibility-session';
 import { haversineDistanceMeters } from '../venues/venue-utils';
 
 @Injectable()
@@ -9,10 +11,14 @@ export class ProximityService {
 
   async listNearbyUsers(userId: string, radiusMeters = 1000, sameVenueOnly = false) {
     const safeRadiusMeters = Number.isFinite(radiusMeters) ? Math.min(Math.max(radiusMeters, 100), 10000) : 1000;
+    const freshCutoff = getVisibilityFreshCutoff();
     const myActiveSession = await this.prisma.visibilitySession.findFirst({
       where: {
         userId,
         isActive: true,
+        updatedAt: {
+          gte: freshCutoff,
+        },
       },
       orderBy: {
         startedAt: 'desc',
@@ -24,6 +30,9 @@ export class ProximityService {
     const visibleUsers = await this.prisma.visibilitySession.findMany({
       where: {
         isActive: true,
+        updatedAt: {
+          gte: freshCutoff,
+        },
         userId: {
           not: userId,
         },
@@ -66,6 +75,16 @@ export class ProximityService {
         ],
       },
     });
+
+    const blockedRelations = await this.prisma.blockedUser.findMany({
+      where: {
+        OR: [{ blockerId: userId }, { blockedId: userId }],
+      },
+    });
+
+    const blockedUserIds = new Set(
+      blockedRelations.map((item) => (item.blockerId === userId ? item.blockedId : item.blockerId)),
+    );
 
     const myCoordinates =
       myActiveSession?.latitude != null && myActiveSession.longitude != null
@@ -117,7 +136,13 @@ export class ProximityService {
           requestStatus: pendingRequest?.status ?? null,
           isConnected,
           linksUnlocked: isConnected,
-          storyPhotoUrls: session.user.profile?.storyPhotoUrls ?? '',
+          storyPhotoUrls: getActiveStoryUrls({
+            urls: session.user.profile?.storyPhotoUrls ?? '',
+            publishedAt:
+              (session.user.profile as (typeof session.user.profile & { storyPublishedAt?: Date | null }) | null)
+                ?.storyPublishedAt ?? null,
+            fallbackUpdatedAt: session.user.profile?.updatedAt ?? null,
+          }),
           publicPhotoUrls: session.user.profile?.publicPhotoUrls ?? '',
           matchOnlyPhotoUrls: isConnected ? session.user.profile?.matchOnlyPhotoUrls ?? '' : '',
           phoneNumber:
@@ -155,7 +180,7 @@ export class ProximityService {
             : null,
         };
       })
-      .filter((user) => user.distanceMeters <= safeRadiusMeters)
+      .filter((user) => user.distanceMeters <= safeRadiusMeters && !blockedUserIds.has(user.id))
       .sort((first, second) => first.distanceMeters - second.distanceMeters);
 
     return {

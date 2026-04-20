@@ -3,6 +3,7 @@ import { VisibilitySource } from '../../generated/prisma/enums';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { UpdateLocationDto } from './dto/update-location.dto';
 import { VenuesService } from '../venues/venues.service';
+import { getVisibilityFreshCutoff } from '../../common/visibility-session';
 
 @Injectable()
 export class VisibilityService {
@@ -109,10 +110,14 @@ export class VisibilityService {
   }
 
   async status(userId: string) {
+    const freshCutoff = getVisibilityFreshCutoff();
     const activeSession = await this.prisma.visibilitySession.findFirst({
       where: {
         userId,
         isActive: true,
+        updatedAt: {
+          gte: freshCutoff,
+        },
       },
       orderBy: {
         startedAt: 'desc',
@@ -129,10 +134,14 @@ export class VisibilityService {
   }
 
   async updateLocation(userId: string, location: UpdateLocationDto) {
+    const freshCutoff = getVisibilityFreshCutoff();
     const activeSession = await this.prisma.visibilitySession.findFirst({
       where: {
         userId,
         isActive: true,
+        updatedAt: {
+          gte: freshCutoff,
+        },
       },
       orderBy: {
         startedAt: 'desc',

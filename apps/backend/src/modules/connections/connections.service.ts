@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConnectionRequestStatus, NotificationType } from '../../generated/prisma/enums';
+import { getActiveStoryUrls } from '../../common/story-media';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -23,6 +24,19 @@ export class ConnectionsService {
   async createRequest(fromUserId: string, toUserId: string) {
     if (fromUserId === toUserId) {
       throw new BadRequestException('Cannot connect to yourself');
+    }
+
+    const blockedRelation = await this.prisma.blockedUser.findFirst({
+      where: {
+        OR: [
+          { blockerId: fromUserId, blockedId: toUserId },
+          { blockerId: toUserId, blockedId: fromUserId },
+        ],
+      },
+    });
+
+    if (blockedRelation) {
+      throw new BadRequestException('Connection unavailable');
     }
 
     const existingRequest = await this.prisma.connectionRequest.findUnique({
@@ -141,8 +155,67 @@ export class ConnectionsService {
     return { request: updatedRequest };
   }
 
+  async disconnect(userId: string, connectionId: string) {
+    const connection = await this.prisma.connection.findUnique({
+      where: { id: connectionId },
+    });
+
+    if (!connection || (connection.userAId !== userId && connection.userBId !== userId)) {
+      throw new NotFoundException('Connection not found');
+    }
+
+    await this.prisma.connection.delete({
+      where: { id: connectionId },
+    });
+
+    this.realtimeService.publishConnectionsUpdated(connection.userAId, 'SYNC');
+    this.realtimeService.publishConnectionsUpdated(connection.userBId, 'SYNC');
+
+    return { success: true };
+  }
+
+  async blockUser(userId: string, targetUserId: string) {
+    if (userId === targetUserId) {
+      throw new BadRequestException('Cannot block yourself');
+    }
+
+    await this.prisma.blockedUser.upsert({
+      where: {
+        blockerId_blockedId: {
+          blockerId: userId,
+          blockedId: targetUserId,
+        },
+      },
+      update: {},
+      create: {
+        blockerId: userId,
+        blockedId: targetUserId,
+      },
+    });
+
+    const pairKey = buildPairKey(userId, targetUserId);
+
+    await this.prisma.connection.deleteMany({
+      where: { pairKey },
+    });
+
+    await this.prisma.connectionRequest.deleteMany({
+      where: {
+        OR: [
+          { fromUserId: userId, toUserId: targetUserId },
+          { fromUserId: targetUserId, toUserId: userId },
+        ],
+      },
+    });
+
+    this.realtimeService.publishConnectionsUpdated(userId, 'SYNC');
+    this.realtimeService.publishConnectionsUpdated(targetUserId, 'SYNC');
+
+    return { success: true };
+  }
+
   async listForUser(userId: string) {
-    const [received, sent, connections] = await Promise.all([
+    const [received, sent, connections, blockedRelations] = await Promise.all([
       this.prisma.connectionRequest.findMany({
         where: {
           toUserId: userId,
@@ -215,32 +288,50 @@ export class ConnectionsService {
           userB: { include: { profile: true } },
         },
       }),
+      this.prisma.blockedUser.findMany({
+        where: {
+          OR: [{ blockerId: userId }, { blockedId: userId }],
+        },
+      }),
     ]);
 
+    const blockedUserIds = new Set(
+      blockedRelations.map((item) => (item.blockerId === userId ? item.blockedId : item.blockerId)),
+    );
+
     return {
-      received: received.map((request) => ({
-        id: request.id,
-        status: request.status,
-        createdAt: request.createdAt,
-        fromUser: {
-          id: request.fromUser.id,
-          displayName: request.fromUser.profile?.displayName ?? request.fromUser.name,
-          photoUrl: request.fromUser.profile?.photoUrl ?? null,
-          headline: request.fromUser.profile?.headline ?? '',
-        },
-      })),
-      sent: sent.map((request) => ({
-        id: request.id,
-        status: request.status,
-        createdAt: request.createdAt,
-        toUser: {
-          id: request.toUser.id,
-          displayName: request.toUser.profile?.displayName ?? request.toUser.name,
-          photoUrl: request.toUser.profile?.photoUrl ?? null,
-          headline: request.toUser.profile?.headline ?? '',
-        },
-      })),
-      connections: connections.map((connection) => {
+      received: received
+        .filter((request) => !blockedUserIds.has(request.fromUser.id))
+        .map((request) => ({
+          id: request.id,
+          status: request.status,
+          createdAt: request.createdAt,
+          fromUser: {
+            id: request.fromUser.id,
+            displayName: request.fromUser.profile?.displayName ?? request.fromUser.name,
+            photoUrl: request.fromUser.profile?.photoUrl ?? null,
+            headline: request.fromUser.profile?.headline ?? '',
+          },
+        })),
+      sent: sent
+        .filter((request) => !blockedUserIds.has(request.toUser.id))
+        .map((request) => ({
+          id: request.id,
+          status: request.status,
+          createdAt: request.createdAt,
+          toUser: {
+            id: request.toUser.id,
+            displayName: request.toUser.profile?.displayName ?? request.toUser.name,
+            photoUrl: request.toUser.profile?.photoUrl ?? null,
+            headline: request.toUser.profile?.headline ?? '',
+          },
+        })),
+      connections: connections
+        .filter((connection) => {
+          const peerId = connection.userAId === userId ? connection.userBId : connection.userAId;
+          return !blockedUserIds.has(peerId);
+        })
+        .map((connection) => {
         const peer = connection.userAId === userId ? connection.userB : connection.userA;
         return {
           id: connection.id,
@@ -258,7 +349,13 @@ export class ConnectionsService {
             otherSocialUrl: peer.profile?.otherSocialUrl ?? null,
             linkedInUrl: peer.profile?.linkedInUrl ?? null,
             matchOnlyPhotoUrls: peer.profile?.matchOnlyPhotoUrls ?? '',
-            matchOnlyStoryPhotoUrls: peer.profile?.matchOnlyStoryPhotoUrls ?? '',
+            matchOnlyStoryPhotoUrls: getActiveStoryUrls({
+              urls: peer.profile?.matchOnlyStoryPhotoUrls ?? '',
+              publishedAt:
+                (peer.profile as (typeof peer.profile & { matchOnlyStoryPublishedAt?: Date | null }) | null)
+                  ?.matchOnlyStoryPublishedAt ?? null,
+              fallbackUpdatedAt: peer.profile?.updatedAt ?? null,
+            }),
           },
         };
       }),

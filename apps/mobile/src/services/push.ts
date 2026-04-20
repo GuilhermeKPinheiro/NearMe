@@ -1,22 +1,10 @@
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { env } from '@/config/env';
 import { debugLog } from '@/services/diagnostics';
 import { deactivatePushDevice, registerPushDevice } from '@/services/notifications';
 import { sessionStorage } from '@/state/session-storage';
-
-const PUSH_TOKEN_KEY = 'nearme.push-token';
-
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
 
 function getProjectId() {
   return (
@@ -27,11 +15,35 @@ function getProjectId() {
   );
 }
 
+function isExpoGo() {
+  return Constants.executionEnvironment === 'storeClient' || Constants.appOwnership === 'expo';
+}
+
+async function loadNotificationsModule() {
+  return import('expo-notifications');
+}
+
 async function getStoredPushToken() {
   return sessionStorage.getPushToken();
 }
 
 export async function configurePushNotifications() {
+  if (isExpoGo()) {
+    debugLog('push', 'configureSkipped', { reason: 'expoGo' });
+    return;
+  }
+
+  const Notifications = await loadNotificationsModule();
+
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    }),
+  });
+
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
       name: 'default',
@@ -43,6 +55,11 @@ export async function configurePushNotifications() {
 }
 
 export async function ensurePushDeviceRegistered() {
+  if (isExpoGo()) {
+    debugLog('push', 'registerSkipped', { reason: 'expoGo' });
+    return null;
+  }
+
   if (!Device.isDevice) {
     debugLog('push', 'registerSkipped', { reason: 'simulator' });
     return null;
@@ -55,6 +72,7 @@ export async function ensurePushDeviceRegistered() {
     return null;
   }
 
+  const Notifications = await loadNotificationsModule();
   const permissionState = await Notifications.getPermissionsAsync();
   let finalStatus = permissionState.status;
 

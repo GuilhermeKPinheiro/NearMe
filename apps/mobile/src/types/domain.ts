@@ -46,6 +46,8 @@ export type Profile = {
   matchOnlyPhotoUrls: string | null;
   storyPhotoUrls: string | null;
   matchOnlyStoryPhotoUrls: string | null;
+  storyPublishedAt?: string | null;
+  matchOnlyStoryPublishedAt?: string | null;
   preferredRadiusMeters: number;
   updatedAt?: string;
 };

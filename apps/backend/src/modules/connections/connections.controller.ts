@@ -28,6 +28,16 @@ export class ConnectionsController {
     return this.connectionsService.rejectRequest(user.userId, id);
   }
 
+  @Post(':id/disconnect')
+  disconnect(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.connectionsService.disconnect(user.userId, id);
+  }
+
+  @Post('block/:targetUserId')
+  block(@CurrentUser() user: AuthenticatedUser, @Param('targetUserId') targetUserId: string) {
+    return this.connectionsService.blockUser(user.userId, targetUserId);
+  }
+
   @Get()
   listConnections(@CurrentUser() user: AuthenticatedUser) {
     return this.connectionsService.listForUser(user.userId);

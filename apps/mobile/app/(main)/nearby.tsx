@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Linking, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { PrimaryButton, SecondaryButton } from '@/components/button';
@@ -50,13 +50,6 @@ export default function NearbyScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pendingConnectionIds, setPendingConnectionIds] = useState<string[]>([]);
   const [error, setError] = useState('');
-  const audienceHint = useMemo(
-    () =>
-      activeVenue
-        ? 'Todo mundo vê quem está visível agora. Só conexões libera o que fica reservado depois do aceite.'
-        : 'Todo mundo vê o básico do perfil. Só conexões abre momentos reservados, fotos privadas e links depois do aceite.',
-    [activeVenue]
-  );
 
   const load = useCallback(
     async (nextRadius = radiusMeters, nextSameVenueOnly = sameVenueOnly, silent = false) => {
@@ -84,7 +77,7 @@ export default function NearbyScreen() {
         }
       }
     },
-    [isVisible, radiusMeters, sameVenueOnly]
+    [isVisible, radiusMeters, sameVenueOnly],
   );
 
   useEffect(() => {
@@ -118,7 +111,7 @@ export default function NearbyScreen() {
         clearInterval(interval);
         unsubscribeRealtime();
       };
-    }, [isVisible, load, radiusMeters, sameVenueOnly])
+    }, [isVisible, load, radiusMeters, sameVenueOnly]),
   );
 
   return (
@@ -155,11 +148,6 @@ export default function NearbyScreen() {
             />
           </Card>
         ) : null}
-
-        <Card tone="soft" style={{ padding: 14 }}>
-          <AppText variant="eyebrow">Como funciona</AppText>
-          <AppText variant="bodyMuted">{audienceHint}</AppText>
-        </Card>
 
         {!isVisible ? (
           <Card tone="soft" style={{ padding: 14 }}>
@@ -339,8 +327,8 @@ export default function NearbyScreen() {
                                   ...item,
                                   requestStatus: 'PENDING',
                                 }
-                              : item
-                          )
+                              : item,
+                          ),
                         );
 
                         sendConnectionRequest(person.id)
@@ -356,8 +344,8 @@ export default function NearbyScreen() {
                                       ...item,
                                       requestStatus: null,
                                     }
-                                  : item
-                              )
+                                  : item,
+                              ),
                             );
                             setError(getErrorMessage(nextError));
                           })
